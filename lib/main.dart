@@ -258,7 +258,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 selectable: true,
                 builders: {
                   'pre': MarkdownElementBuilder(
-                    visitElementAfter: (element, preferredStyle) {
+                    visitElementAfterWithContext: (context, element, preferredStyle) {
                       return CodeBubble(code: element.textContent);
                     },
                   ),
