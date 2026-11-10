@@ -8,6 +8,7 @@ import 'package:llama_flutter_android/llama_flutter_android.dart';
 import 'model_downloader.dart';
 import 'trading_agent.dart';
 import 'code_bubble.dart';
+import 'web_search.dart'; // استيراد أداة البحث
 
 void main() {
   runApp(const MyApp());
@@ -113,7 +114,7 @@ class _SplashScreenState extends State<SplashScreen> {
 }
 
 // ==========================================
-// 2. شاشة الدردشة (المحرك الحقيقي)
+// 2. شاشة الدردشة (المحرك الحقيقي + البحث)
 // ==========================================
 class ChatScreen extends StatefulWidget {
   final String modelPath;
@@ -128,7 +129,6 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isLoading = false;
   bool _isModelReady = false;
 
-  // محرك Llama الحقيقي
   final LlamaController _llama = LlamaController();
   StreamSubscription? _generationSub;
 
@@ -140,29 +140,28 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _initModel() async {
     try {
-      // تحميل الموديل في الذاكرة (4 threads يناسب هاتفك)
+      // تم إزالة nThreads لأنها غير مدعومة في هذا الإصدار
       await _llama.loadModel(
         modelPath: widget.modelPath,
-        nThreads: 4,
         contextSize: 2048,
       );
       setState(() {
         _isModelReady = true;
-        _messages.add({"role": "ai", "text": "الموديل جاهز. كيف يمكنني مساعدتك؟"});
+        _messages.add({"role": "ai", "text": "الموديل جاهز. يمكنني البحث في الإنترنت إذا طلبت مني ذلك."});
       });
     } catch (e) {
       setState(() {
-        _messages.add({"role": "ai", "text": "فشل تحميل الموديل في الذاكرة: $e"});
+        _messages.add({"role": "ai", "text": "فشل تحميل الموديل: $e"});
       });
     }
   }
 
-  // دالة توليد النص الحقيقية
-  void _generateResponse(String prompt) {
+  // دالة التوليد المعدلة لدعم البحث
+  void _generateResponse(String prompt, {bool isSearchResult = false}) {
     String currentResponse = "";
     setState(() {
       _isLoading = true;
-      _messages.add({"role": "ai", "text": ""}); // فقاعة فارغة سيتم ملؤها
+      _messages.add({"role": "ai", "text": ""});
     });
 
     _generationSub = _llama.generate(
@@ -170,12 +169,43 @@ class _ChatScreenState extends State<ChatScreen> {
       maxTokens: 512,
       temperature: 0.7,
     ).listen(
-      (token) {
-        // تحديث الواجهة مع كل رمز جديد (Streaming)
+      (token) async {
+        currentResponse += token;
         setState(() {
-          currentResponse += token;
           _messages.last["text"] = currentResponse;
         });
+
+        // فحص هل الموديل قرر البحث؟ (نفحص فقط إذا لم تكن النتيجة بحث سابق)
+        if (!isSearchResult && currentResponse.contains("[SEARCH:")) {
+          await _generationSub?.cancel();
+          
+          RegExp regExp = RegExp(r'\[SEARCH:\s*(.*?)\]');
+          var match = regExp.firstMatch(currentResponse);
+          String query = match?.group(1)?.trim() ?? "";
+
+          if (query.isNotEmpty) {
+            setState(() {
+              _messages.last["text"] = "🔍 جاري البحث في الإنترنت عن: $query...";
+            });
+
+            WebSearch searcher = WebSearch();
+            String searchResults = await searcher.search(query);
+
+            // حذف رسالة "جاري البحث"
+            setState(() {
+              _messages.removeLast();
+            });
+
+            // إعادة إرسال النتائج للموديل ليجيب
+            String newPrompt = """
+لقد بحثت في الإنترنت عن "$query" وحصلت على النتائج التالية:
+$searchResults
+
+الآن، أجب على المستخدم بناءً على هذه النتائج بوضوح. لا تطلب بحثاً آخر.
+""";
+            _generateResponse(newPrompt, isSearchResult: true);
+          }
+        }
       },
       onDone: () {
         setState(() => _isLoading = false);
@@ -183,7 +213,7 @@ class _ChatScreenState extends State<ChatScreen> {
       onError: (error) {
         setState(() {
           _isLoading = false;
-          _messages.last["text"] = "خطأ في التوليد: $error";
+          _messages.last["text"] = "خطأ: $error";
         });
       },
     );
@@ -192,11 +222,20 @@ class _ChatScreenState extends State<ChatScreen> {
   void _sendMessage() async {
     if (_controller.text.isEmpty || !_isModelReady) return;
     String userText = _controller.text;
+    
+    // إضافة تعليمات النظام لتعليم الموديل كيفية البحث
+    String systemPrompt = """
+أنت مساعد ذكي. إذا لم تكن تعرف الإجابة أو احتجت لمعلومات حديثة، يمكنك البحث في الإنترنت.
+لكي تبحث، اكتب هذه الصيغة فقط: [SEARCH: كلمة_البحث]
+سؤال المستخدم: $userText
+""";
+
     setState(() {
       _messages.add({"role": "user", "text": userText});
       _controller.clear();
     });
-    _generateResponse(userText);
+    
+    _generateResponse(systemPrompt);
   }
 
   void _runTradingAgent() async {
@@ -215,7 +254,7 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void dispose() {
     _generationSub?.cancel();
-    _llama.dispose(); // تفريغ الذاكرة عند الخروج
+    _llama.dispose();
     _controller.dispose();
     super.dispose();
   }
@@ -224,7 +263,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(_isModelReady ? 'وكلاء الذكاء الاصطناعي' : 'جاري تحميل الموديل...'),
+        title: Text(_isModelReady ? 'وكيل ذكي متصل' : 'جاري تحميل الموديل...'),
         actions: [
           IconButton(
             icon: const Icon(Icons.show_chart, color: Colors.amber),
@@ -254,7 +293,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   child: TextField(
                     controller: _controller,
                     enabled: _isModelReady && !_isLoading,
-                    decoration: const InputDecoration(hintText: "اكتب رسالتك...", border: OutlineInputBorder()),
+                    decoration: const InputDecoration(hintText: "اسأل عن أي شيء...", border: OutlineInputBorder()),
                     onSubmitted: (_) => _sendMessage(),
                   ),
                 ),
