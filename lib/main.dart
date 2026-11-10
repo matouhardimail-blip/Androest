@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'dart:io';
+import 'package:markdown/markdown.dart' as md; // مطلوب لتعريف Element
 
 // استيراد الملفات التي أنشأناها
 import 'model_downloader.dart';
@@ -21,6 +22,18 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(primarySwatch: Colors.teal),
       home: const SplashScreen(),
     );
+  }
+}
+
+// ==========================================
+// حل مشكلة MarkdownElementBuilder المجردة
+// ==========================================
+class CodeElementBuilder extends MarkdownElementBuilder {
+  @override
+  Widget? visitElementAfterWithContext(
+      BuildContext context, md.Element element, TextStyle? preferredStyle) {
+    String code = element.textContent;
+    return CodeBubble(code: code);
   }
 }
 
@@ -131,13 +144,11 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _initModel() async {
     // TODO: قم بتحميل الموديل هنا باستخدام مسار widget.modelPath
-    // await llamaEngine.loadModel(widget.modelPath);
     setState(() {
       _messages.add({"role": "ai", "text": "الموديل جاهز. كيف يمكنني مساعدتك؟"});
     });
   }
 
-  // دالة إرسال الرسالة العادية
   void _sendMessage() async {
     if (_controller.text.isEmpty) return;
     
@@ -148,20 +159,15 @@ class _ChatScreenState extends State<ChatScreen> {
       _isLoading = true;
     });
 
-    // TODO: استبدل هذا السطر بدالة الموديل الخاصة بك
-    // String aiResponse = await llamaEngine.generate(userText);
+    // رد تجريبي
     String aiResponse = "هذا رد تجريبي. الكود جاهز: \n```dart\nvoid main() {\n  print('Hello');\n}\n```"; 
 
     setState(() {
       _messages.add({"role": "ai", "text": aiResponse});
       _isLoading = false;
     });
-
-    // TODO: تفريغ الذاكرة (مهم جداً لهاتف A52)
-    // await llamaEngine.clearContext();
   }
 
-  // دالة تشغيل وكيل التداول
   void _runTradingAgent() async {
     setState(() {
       _messages.add({"role": "user", "text": "قم بتحليل الذهب الآن."});
@@ -172,8 +178,7 @@ class _ChatScreenState extends State<ChatScreen> {
     String data = await agent.fetchGoldPrices();
     String prompt = agent.generateTAPrompt(data);
 
-    // TODO: استبدل هذا السطر بدالة الموديل الخاصة بك
-    // String aiResponse = await llamaEngine.generate(prompt);
+    // رد تجريبي
     String aiResponse = "تحليل البيانات:\n$data\n\nالقرار:\n[SIGNAL: BUY]"; 
 
     setState(() {
@@ -240,7 +245,6 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  // بناء فقاعة الرسالة مع دعم Markdown للنسخ
   Widget _buildMessageBubble(String text, bool isUser) {
     return Align(
       alignment: isUser ? Alignment.centerLeft : Alignment.centerRight,
@@ -257,11 +261,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 data: text,
                 selectable: true,
                 builders: {
-                  'pre': MarkdownElementBuilder(
-                    visitElementAfterWithContext: (context, element, preferredStyle) {
-                      return CodeBubble(code: element.textContent);
-                    },
-                  ),
+                  'pre': CodeElementBuilder(), // هنا استخدمنا الكلاس الجديد
                 },
               ),
       ),
