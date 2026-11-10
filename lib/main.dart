@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'dart:async';
 import 'dart:io';
-import 'package:markdown/markdown.dart' as md; // مطلوب لتعريف Element
+import 'package:markdown/markdown.dart' as md;
+import 'package:llama_flutter_android/llama_flutter_android.dart';
 
-// استيراد الملفات التي أنشأناها
 import 'model_downloader.dart';
 import 'trading_agent.dart';
 import 'code_bubble.dart';
@@ -14,7 +15,6 @@ void main() {
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
-
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -25,28 +25,19 @@ class MyApp extends StatelessWidget {
   }
 }
 
-// ==========================================
-// حل مشكلة MarkdownElementBuilder
-// ==========================================
 class CodeElementBuilder extends MarkdownElementBuilder {
   @override
   Widget? visitElementAfterWithContext(
-    BuildContext context,
-    md.Element element,
-    TextStyle? preferredStyle,
-    TextStyle? blockStyle, // <-- الوسيط الرابع الذي كان ناقصاً
-  ) {
-    String code = element.textContent;
-    return CodeBubble(code: code);
+      BuildContext context, md.Element element, TextStyle? preferredStyle, TextStyle? blockStyle) {
+    return CodeBubble(code: element.textContent);
   }
 }
 
 // ==========================================
-// 1. شاشة البداية (التحميل والتحقق)
+// 1. شاشة البداية
 // ==========================================
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
-
   @override
   State<SplashScreen> createState() => _SplashScreenState();
 }
@@ -72,7 +63,7 @@ class _SplashScreenState extends State<SplashScreen> {
     }
 
     setState(() {
-      _status = "جاري تحميل الموديل (1.7 جيجا)... يرجى استخدام Wi-Fi.";
+      _status = "جاري تحميل الموديل (1.67 جيجا)... يرجى استخدام Wi-Fi.";
       _isDownloading = true;
     });
 
@@ -113,10 +104,7 @@ class _SplashScreenState extends State<SplashScreen> {
               Text("${(_progress * 100).toStringAsFixed(1)}%"),
             ],
             if (!_isDownloading && _status.contains("فشل"))
-              ElevatedButton(
-                onPressed: _checkAndDownload,
-                child: const Text("إعادة المحاولة"),
-              )
+              ElevatedButton(onPressed: _checkAndDownload, child: const Text("إعادة المحاولة"))
           ],
         ),
       ),
@@ -125,12 +113,11 @@ class _SplashScreenState extends State<SplashScreen> {
 }
 
 // ==========================================
-// 2. شاشة الدردشة الرئيسية
+// 2. شاشة الدردشة (المحرك الحقيقي)
 // ==========================================
 class ChatScreen extends StatefulWidget {
   final String modelPath;
   const ChatScreen({super.key, required this.modelPath});
-
   @override
   State<ChatScreen> createState() => _ChatScreenState();
 }
@@ -139,6 +126,11 @@ class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _controller = TextEditingController();
   final List<Map<String, dynamic>> _messages = [];
   bool _isLoading = false;
+  bool _isModelReady = false;
+
+  // محرك Llama الحقيقي
+  final LlamaController _llama = LlamaController();
+  StreamSubscription? _generationSub;
 
   @override
   void initState() {
@@ -146,61 +138,97 @@ class _ChatScreenState extends State<ChatScreen> {
     _initModel();
   }
 
-  void _initModel() async {
-    // TODO: قم بتحميل الموديل هنا باستخدام مسار widget.modelPath
+  Future<void> _initModel() async {
+    try {
+      // تحميل الموديل في الذاكرة (4 threads يناسب هاتفك)
+      await _llama.loadModel(
+        modelPath: widget.modelPath,
+        nThreads: 4,
+        contextSize: 2048,
+      );
+      setState(() {
+        _isModelReady = true;
+        _messages.add({"role": "ai", "text": "الموديل جاهز. كيف يمكنني مساعدتك؟"});
+      });
+    } catch (e) {
+      setState(() {
+        _messages.add({"role": "ai", "text": "فشل تحميل الموديل في الذاكرة: $e"});
+      });
+    }
+  }
+
+  // دالة توليد النص الحقيقية
+  void _generateResponse(String prompt) {
+    String currentResponse = "";
     setState(() {
-      _messages.add({"role": "ai", "text": "الموديل جاهز. كيف يمكنني مساعدتك؟"});
+      _isLoading = true;
+      _messages.add({"role": "ai", "text": ""}); // فقاعة فارغة سيتم ملؤها
     });
+
+    _generationSub = _llama.generate(
+      prompt: prompt,
+      maxTokens: 512,
+      temperature: 0.7,
+    ).listen(
+      (token) {
+        // تحديث الواجهة مع كل رمز جديد (Streaming)
+        setState(() {
+          currentResponse += token;
+          _messages.last["text"] = currentResponse;
+        });
+      },
+      onDone: () {
+        setState(() => _isLoading = false);
+      },
+      onError: (error) {
+        setState(() {
+          _isLoading = false;
+          _messages.last["text"] = "خطأ في التوليد: $error";
+        });
+      },
+    );
   }
 
   void _sendMessage() async {
-    if (_controller.text.isEmpty) return;
-    
+    if (_controller.text.isEmpty || !_isModelReady) return;
     String userText = _controller.text;
     setState(() {
       _messages.add({"role": "user", "text": userText});
       _controller.clear();
-      _isLoading = true;
     });
-
-    // رد تجريبي
-    String aiResponse = "هذا رد تجريبي. الكود جاهز: \n```dart\nvoid main() {\n  print('Hello');\n}\n```"; 
-
-    setState(() {
-      _messages.add({"role": "ai", "text": aiResponse});
-      _isLoading = false;
-    });
+    _generateResponse(userText);
   }
 
   void _runTradingAgent() async {
+    if (!_isModelReady) return;
     setState(() {
       _messages.add({"role": "user", "text": "قم بتحليل الذهب الآن."});
-      _isLoading = true;
     });
 
     TradingAgent agent = TradingAgent();
     String data = await agent.fetchGoldPrices();
     String prompt = agent.generateTAPrompt(data);
+    
+    _generateResponse(prompt);
+  }
 
-    // رد تجريبي
-    String aiResponse = "تحليل البيانات:\n$data\n\nالقرار:\n[SIGNAL: BUY]"; 
-
-    setState(() {
-      _messages.add({"role": "ai", "text": aiResponse});
-      _isLoading = false;
-    });
+  @override
+  void dispose() {
+    _generationSub?.cancel();
+    _llama.dispose(); // تفريغ الذاكرة عند الخروج
+    _controller.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('وكلاء الذكاء الاصطناعي'),
+        title: Text(_isModelReady ? 'وكلاء الذكاء الاصطناعي' : 'جاري تحميل الموديل...'),
         actions: [
           IconButton(
             icon: const Icon(Icons.show_chart, color: Colors.amber),
-            tooltip: "تحليل الذهب",
-            onPressed: _isLoading ? null : _runTradingAgent,
+            onPressed: (_isLoading || !_isModelReady) ? null : _runTradingAgent,
           )
         ],
       ),
@@ -212,16 +240,12 @@ class _ChatScreenState extends State<ChatScreen> {
               itemCount: _messages.length,
               itemBuilder: (context, index) {
                 final msg = _messages[index];
-                bool isUser = msg['role'] == 'user';
-                return _buildMessageBubble(msg['text'], isUser);
+                return _buildMessageBubble(msg['text'], msg['role'] == 'user');
               },
             ),
           ),
           if (_isLoading)
-            const Padding(
-              padding: EdgeInsets.all(8.0),
-              child: CircularProgressIndicator(),
-            ),
+            const Padding(padding: EdgeInsets.all(8.0), child: CircularProgressIndicator()),
           Padding(
             padding: const EdgeInsets.all(8.0),
             child: Row(
@@ -229,17 +253,15 @@ class _ChatScreenState extends State<ChatScreen> {
                 Expanded(
                   child: TextField(
                     controller: _controller,
-                    decoration: const InputDecoration(
-                      hintText: "اكتب رسالتك...",
-                      border: OutlineInputBorder(),
-                    ),
+                    enabled: _isModelReady && !_isLoading,
+                    decoration: const InputDecoration(hintText: "اكتب رسالتك...", border: OutlineInputBorder()),
                     onSubmitted: (_) => _sendMessage(),
                   ),
                 ),
                 const SizedBox(width: 8),
                 IconButton(
                   icon: const Icon(Icons.send, color: Colors.teal),
-                  onPressed: _isLoading ? null : _sendMessage,
+                  onPressed: (_isLoading || !_isModelReady) ? null : _sendMessage,
                 ),
               ],
             ),
@@ -262,11 +284,9 @@ class _ChatScreenState extends State<ChatScreen> {
         child: isUser
             ? Text(text, style: const TextStyle(fontSize: 16))
             : MarkdownBody(
-                data: text,
+                data: text.isEmpty ? "..." : text,
                 selectable: true,
-                builders: {
-                  'pre': CodeElementBuilder(),
-                },
+                builders: {'pre': CodeElementBuilder()},
               ),
       ),
     );
