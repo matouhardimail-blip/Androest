@@ -4,13 +4,12 @@ import 'dart:async';
 import 'dart:io';
 import 'package:markdown/markdown.dart' as md;
 import 'package:llama_flutter_android/llama_flutter_android.dart';
-import 'package:intl/intl.dart';
 
 import 'model_downloader.dart';
 import 'code_bubble.dart';
 import 'web_search.dart';
 import 'trading_agent.dart';
-import 'agent_system.dart'; // استيراد نظام الوكلاء
+import 'agent_system.dart';
 
 void main() {
   runApp(const MyApp());
@@ -36,9 +35,6 @@ class CodeElementBuilder extends MarkdownElementBuilder {
   }
 }
 
-// ==========================================
-// شاشة البداية (نفس السابقة)
-// ==========================================
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
   @override
@@ -97,7 +93,7 @@ class _SplashScreenState extends State<SplashScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.hub, size: 80, color: Colors.teal), // أيقونة وكلاء
+            const Icon(Icons.hub, size: 80, color: Colors.teal),
             const SizedBox(height: 20),
             Text(_status, textAlign: TextAlign.center),
             const SizedBox(height: 20),
@@ -115,9 +111,6 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 }
 
-// ==========================================
-// شاشة الوكلاء (المحرك الحقيقي)
-// ==========================================
 class ChatScreen extends StatefulWidget {
   final String modelPath;
   const ChatScreen({super.key, required this.modelPath});
@@ -150,7 +143,7 @@ class _ChatScreenState extends State<ChatScreen> {
       );
       setState(() {
         _isModelReady = true;
-        _messages.add({"role": "ai", "text": "نظام الوكلاء جاهز. اكتب طلبك (مثلاً: ابحث عن سعر الذهب، أو حلل الذهب)."});
+        _messages.add({"role": "ai", "text": "نظام الوكلاء جاهز. اكتب طلبك (مثلاً: ابحث عن الطقس، أو حلل الذهب)."});
       });
     } catch (e) {
       setState(() {
@@ -159,7 +152,6 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  // الدالة الأساسية لتنفيذ مهام الوكلاء
   void _executeAgentTask(Agent agent, String prompt, {bool isSearchResult = false}) async {
     String currentResponse = "";
     setState(() {
@@ -167,21 +159,29 @@ class _ChatScreenState extends State<ChatScreen> {
       _messages.add({"role": "ai", "text": "الوكيل (${agent.name}): "});
     });
 
-    // 1. تجهيز الـ Prompt (System + User)
     String fullPrompt = "${agent.systemPrompt}\n\nطلب المستخدم: $prompt\nالرد:";
 
     _generationSub = _llama.generate(
       prompt: fullPrompt,
-      maxTokens: 512,
-      temperature: 0.3,
+      maxTokens: 256, // قللنا الحد الأقصى لأننا نريد أمر بحث قصير
+      temperature: 0.1, // حرارة منخفضة جداً لمنع الهلوسة
     ).listen(
       (token) async {
         currentResponse += token;
-        setState(() {
-          _messages.last["text"] = "الوكيل (${agent.name}):\n" + currentResponse;
-        });
+        
+        // إذا كنا في مرحلة طلب البحث، لا نعرض النص للمستخدم، بل ننتظر اكتماله
+        if (!isSearchResult && agent.name == "وكيل البحث") {
+           // نكتفي بتحديث الواجهة برسالة "جاري التفكير..."
+           setState(() {
+             _messages.last["text"] = "الوكيل (${agent.name}):\n🔍 جاري تحليل الطلب للبحث...";
+           });
+        } else {
+           setState(() {
+             _messages.last["text"] = "الوكيل (${agent.name}):\n" + currentResponse;
+           });
+        }
 
-        // 2. التعامل مع أداة البحث إن لزم الأمر
+        // اصطياد أمر البحث
         if (!isSearchResult && currentResponse.contains("[SEARCH:")) {
           await _generationSub?.cancel();
           
@@ -200,31 +200,37 @@ class _ChatScreenState extends State<ChatScreen> {
 
             setState(() => _messages.removeLast());
 
-            // إعادة التوليد بنتيجة البحث
+            // إعادة التوليد بنتيجة البحث (هنا سيصبح isSearchResult = true)
             String searchPrompt = """
-نتائج البحث عن "$query":
+لقد بحثت في الإنترنت عن "$query" وحصلت على المعلومات التالية:
 $searchResults
-أجب على المستخدم الآن بناءً على هذه النتائج.
+
+المستخدم سأل: $prompt
+الآن أجب على المستخدم باللغة العربية بناءً على هذه المعلومات. لا تطلب بحثاً آخر. كن دقيقاً.
 """;
             _executeAgentTask(agent, searchPrompt, isSearchResult: true);
+          } else {
+             // في حال فشل استخراج الكلمة، نعطي إجابة افتراضية
+             setState(() {
+               _messages.last["text"] = "الوكيل (${agent.name}):\nلم أتمكن من فهم كلمة البحث، جرب صياغة أخرى.";
+               _isLoading = false;
+             });
           }
         }
       },
       onDone: () {
         setState(() => _isLoading = false);
-        // تفريغ الذاكرة بعد انتهاء الوكيل
         _llama.clearContext(); 
       },
       onError: (error) {
         setState(() {
           _isLoading = false;
-          _messages.last["text"] = "خطأ في التوليد: $error";
+          _messages.last["text"] = "خطأ: $error";
         });
       },
     );
   }
 
-  // إرسال الرسالة وتوجيهها للمنسق
   void _sendMessage() async {
     if (_controller.text.isEmpty || !_isModelReady) return;
     String userText = _controller.text;
@@ -234,10 +240,8 @@ $searchResults
       _controller.clear();
     });
 
-    // 1. المنسق يقرر أي وكيل يجب أن يعمل
     Agent assignedAgent = _orchestrator.routeTask(userText);
     
-    // 2. التحقق هل المهمة خاصة بالذهب؟
     if (assignedAgent.name == "وكيل الذهب") {
       setState(() {
         _messages.add({"role": "ai", "text": "المنسق: سأستخدم وكيل الذهب لجلب الأسعار الحية..."});
@@ -248,7 +252,6 @@ $searchResults
       
       _executeAgentTask(assignedAgent, promptWithData);
     } else {
-      // 3. إذا كان وكيل بحث أو عام
       _executeAgentTask(assignedAgent, userText);
     }
   }
