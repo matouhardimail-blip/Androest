@@ -2,7 +2,6 @@ import 'package:llama_flutter_android/llama_flutter_android.dart';
 import 'web_search.dart';
 import 'trading_agent.dart';
 
-// 1. تعريف الوكيل
 class Agent {
   final String name;
   final String systemPrompt;
@@ -11,7 +10,6 @@ class Agent {
   Agent({required this.name, required this.systemPrompt, required this.description});
 }
 
-// 2. مصنع الوكلاء (ينشئ الوكلاء آلياً)
 class AgentFactory {
   static Agent createGoldAgent() {
     return Agent(
@@ -31,10 +29,13 @@ class AgentFactory {
     return Agent(
       name: "وكيل البحث",
       description: "يبحث في الإنترنت عن الأخبار والمعلومات",
+      // هذا البرومبت الصارم سيمنع الموديل من الكلام ويجبره على طلب البحث فقط
       systemPrompt: """
-أنت وكيل باحث. مهمتك الإجابة على أسئلة المستخدم.
-إذا احتجت معلومات حديثة، اكتب [SEARCH: كلمة_البحث] فقط.
-لا تجب من رأسك إذا لم تكن متأكداً.
+أنت أداة استخراج كلمات بحث. مهمتك الوحيدة هي تحويل سؤال المستخدم إلى كلمات بحث بالإنجليزية.
+يجب أن يكون المخرج الوحيد هو: [SEARCH: كلمة_البحث]
+لا تكتب أي شيء آخر. لا تشرح. لا تجب. فقط المخرج المطلوب.
+مثال: المستخدم: ما هو سعر الذهب اليوم؟ -> المخرج: [SEARCH: gold price today]
+مثال: المستخدم: من هو ميسي؟ -> المخرج: [SEARCH: Lionel Messi]
 """,
     );
   }
@@ -48,25 +49,18 @@ class AgentFactory {
   }
 }
 
-// 3. المنسق (Orchestrator) - يضمن التناوب
 class Orchestrator {
   final LlamaController llama;
   
   Orchestrator(this.llama);
 
-  // دالة اتخاذ القرار (توجيه المهمة)
   Agent routeTask(String userPrompt) {
     String lowerPrompt = userPrompt.toLowerCase();
     
-    // توجيه بناءً على الكلمات المفتاحية لتوفير وقت المعالج
     if (lowerPrompt.contains("ذهب") || lowerPrompt.contains("gold") || lowerPrompt.contains("تداول")) {
       return AgentFactory.createGoldAgent();
     } 
-    if (lowerPrompt.contains("ابحث") || lowerPrompt.contains("أخبار") || lowerPrompt.contains("من هو") || lowerPrompt.contains("ما هو")) {
-      return AgentFactory.createSearchAgent();
-    }
-    
-    // إذا لم يتم العثور على كلمات مفتاحية، نستخدم الوكيل العام
-    return AgentFactory.createGeneralAgent();
+    // توجيه أي سؤال آخر إلى وكيل البحث
+    return AgentFactory.createSearchAgent();
   }
 }
