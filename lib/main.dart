@@ -26,12 +26,16 @@ class MyApp extends StatelessWidget {
 }
 
 // ==========================================
-// حل مشكلة MarkdownElementBuilder المجردة
+// حل مشكلة MarkdownElementBuilder
 // ==========================================
 class CodeElementBuilder extends MarkdownElementBuilder {
   @override
   Widget? visitElementAfterWithContext(
-      BuildContext context, md.Element element, TextStyle? preferredStyle) {
+    BuildContext context,
+    md.Element element,
+    TextStyle? preferredStyle,
+    TextStyle? blockStyle, // <-- الوسيط الرابع الذي كان ناقصاً
+  ) {
     String code = element.textContent;
     return CodeBubble(code: code);
   }
@@ -261,7 +265,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 data: text,
                 selectable: true,
                 builders: {
-                  'pre': CodeElementBuilder(), // هنا استخدمنا الكلاس الجديد
+                  'pre': CodeElementBuilder(),
                 },
               ),
       ),
