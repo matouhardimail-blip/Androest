@@ -1,0 +1,33 @@
+name: agentphone
+description: "AgentPhone — مساعد ذكاء اصطناعي يعمل بالكامل على جهاز Samsung Galaxy A52 دون اتصال بالإنترنت."
+publish_to: "none"
+version: 1.0.0+2
+
+# Flutter 3.47.x (أحدث إصدار مستقر، يأتي مع Dart 3.13)
+environment:
+  sdk: ">=3.10.0 <4.0.0"
+  flutter: ">=3.38.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # محرك llama.cpp / GGUF — مرخّص MIT، مخصّص لأندرويد.
+  # يوفّر: بثّ الرموز (Pigeon)، قوالب ChatML، إيقاف التوليد، تفريغ السياق،
+  # كشف الذاكرة الحرة، وتحسينات ARM64 NEON + dotprod (مهمة لـ Snapdragon 720G).
+  llama_flutter_android: ^0.2.6
+
+  # تنزيل النموذج مع تتبّع التقدّم وإمكانية الاستئناف (Range requests)
+  dio: ^5.11.1
+
+  # مسار تخزين دائم داخل مساحة التطبيق ← لا يحتاج أي إذن تخزين
+  path_provider: ^2.1.6
+  path: ^1.9.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
