@@ -31,7 +31,8 @@ class _AgentsScreenState extends State<AgentsScreen> {
     setState(() => _isLoading = false);
   }
 
-  void _addAgentDialog() {
+  // دالة موحدة للإضافة والتعديل
+  void _showAgentDialog({AgentModel? agentToEdit}) {
     if (_providers.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("الرجاء إضافة مزود خدمة (API) أولاً من الإعدادات.")),
@@ -39,10 +40,16 @@ class _AgentsScreenState extends State<AgentsScreen> {
       return;
     }
 
-    String name = "";
-    String desc = "";
-    String sysPrompt = "أنت مساعد ذكي.";
-    String selectedProviderId = _providers.first.id;
+    // إذا كان هناك وكيل يتم تعديله، نستخدم بياناته. وإلا نبدأ ببيانات فارغة
+    String name = agentToEdit?.name ?? "";
+    String desc = agentToEdit?.description ?? "";
+    String sysPrompt = agentToEdit?.systemPrompt ?? "أنت مساعد ذكي.";
+    
+    // التحقق مما إذا كان مزود الخدمة المرتبط بالوكيل لا يزال موجوداً
+    String selectedProviderId = agentToEdit?.providerId ?? _providers.first.id;
+    if (agentToEdit != null && !_providers.any((p) => p.id == agentToEdit.providerId)) {
+      selectedProviderId = _providers.first.id; // إذا تم حذف المزود، نختار الأول افتراضياً
+    }
 
     showDialog(
       context: context,
@@ -51,19 +58,30 @@ class _AgentsScreenState extends State<AgentsScreen> {
           builder: (context, setStateDialog) {
             return AlertDialog(
               backgroundColor: AppColors.cardBackground,
-              title: const Text("إنشاء وكيل جديد", style: TextStyle(color: Colors.white)),
+              title: Text(
+                agentToEdit == null ? "إنشاء وكيل جديد" : "تعديل الوكيل",
+                style: const TextStyle(color: Colors.white),
+              ),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     TextField(
                       style: const TextStyle(color: Colors.white),
-                      decoration: const InputDecoration(labelText: "اسم الوكيل", labelStyle: TextStyle(color: AppColors.textSecondary)),
+                      controller: TextEditingController(text: name),
+                      decoration: const InputDecoration(
+                        labelText: "اسم الوكيل",
+                        labelStyle: TextStyle(color: AppColors.textSecondary),
+                      ),
                       onChanged: (v) => name = v,
                     ),
                     TextField(
                       style: const TextStyle(color: Colors.white),
-                      decoration: const InputDecoration(labelText: "وصف قصير", labelStyle: TextStyle(color: AppColors.textSecondary)),
+                      controller: TextEditingController(text: desc),
+                      decoration: const InputDecoration(
+                        labelText: "وصف قصير",
+                        labelStyle: TextStyle(color: AppColors.textSecondary),
+                      ),
                       onChanged: (v) => desc = v,
                     ),
                     const SizedBox(height: 15),
@@ -75,35 +93,66 @@ class _AgentsScreenState extends State<AgentsScreen> {
                         child: Text("${p.name} (${p.modelName})", style: const TextStyle(color: Colors.white)),
                       )).toList(),
                       onChanged: (v) => setStateDialog(() => selectedProviderId = v!),
-                      decoration: const InputDecoration(labelText: "مزود الخدمة المرتبط", labelStyle: TextStyle(color: AppColors.textSecondary)),
+                      decoration: const InputDecoration(
+                        labelText: "مزود الخدمة المرتبط",
+                        labelStyle: TextStyle(color: AppColors.textSecondary),
+                      ),
                     ),
                     const SizedBox(height: 15),
                     TextField(
                       style: const TextStyle(color: Colors.white),
+                      controller: TextEditingController(text: sysPrompt),
                       maxLines: 3,
-                      decoration: const InputDecoration(labelText: "شخصية الوكيل (System Prompt)", labelStyle: TextStyle(color: AppColors.textSecondary)),
+                      decoration: const InputDecoration(
+                        labelText: "شخصية الوكيل (System Prompt)",
+                        labelStyle: TextStyle(color: AppColors.textSecondary),
+                      ),
                       onChanged: (v) => sysPrompt = v,
                     ),
                   ],
                 ),
               ),
               actions: [
-                TextButton(onPressed: () => Navigator.pop(context), child: const Text("إلغاء", style: TextStyle(color: Colors.grey))),
+                TextButton(
+                  onPressed: () => Navigator.pop(context), 
+                  child: const Text("إلغاء", style: TextStyle(color: Colors.grey))
+                ),
                 ElevatedButton(
                   onPressed: () async {
                     if (name.isNotEmpty) {
                       CloudProviderConfig selectedProvider = _providers.firstWhere((p) => p.id == selectedProviderId);
-                      AgentModel newAgent = AgentModel(
-                        id: const Uuid().v4(),
-                        name: name,
-                        description: desc,
-                        providerId: selectedProviderId,
-                        modelName: selectedProvider.modelName,
-                        systemPrompt: sysPrompt,
-                        icon: Icons.smart_toy,
-                        color: AppColors.primary,
-                      );
-                      _agents.add(newAgent);
+                      
+                      if (agentToEdit == null) {
+                        // إنشاء وكيل جديد
+                        AgentModel newAgent = AgentModel(
+                          id: const Uuid().v4(),
+                          name: name,
+                          description: desc,
+                          providerId: selectedProviderId,
+                          modelName: selectedProvider.modelName,
+                          systemPrompt: sysPrompt,
+                          icon: Icons.smart_toy,
+                          color: AppColors.primary,
+                        );
+                        _agents.add(newAgent);
+                      } else {
+                        // تعديل وكيل موجود
+                        int index = _agents.indexWhere((a) => a.id == agentToEdit.id);
+                        if (index != -1) {
+                          _agents[index] = AgentModel(
+                            id: agentToEdit.id,
+                            name: name,
+                            description: desc,
+                            providerId: selectedProviderId,
+                            modelName: selectedProvider.modelName,
+                            systemPrompt: sysPrompt,
+                            icon: agentToEdit.icon,
+                            color: agentToEdit.color,
+                            isConnected: agentToEdit.isConnected,
+                          );
+                        }
+                      }
+                      
                       await AgentManager.saveAgents(_agents);
                       _loadData();
                       if (mounted) Navigator.pop(context);
@@ -140,7 +189,7 @@ class _AgentsScreenState extends State<AgentsScreen> {
                   ),
                   IconButton(
                     icon: const Icon(Icons.add_circle, color: AppColors.primary, size: 30),
-                    onPressed: _addAgentDialog,
+                    onPressed: () => _showAgentDialog(), // فتح نافذة الإضافة
                   )
                 ],
               ),
@@ -198,6 +247,13 @@ class _AgentsScreenState extends State<AgentsScreen> {
                                     ],
                                   ),
                                 ),
+                                // زر التعديل الجديد
+                                IconButton(
+                                  icon: const Icon(Icons.edit, color: AppColors.textSecondary, size: 22),
+                                  onPressed: () => _showAgentDialog(agentToEdit: agent),
+                                  tooltip: "تعديل الوكيل",
+                                ),
+                                const SizedBox(width: 5),
                                 ElevatedButton(
                                   onPressed: () {
                                     Navigator.push(
