@@ -34,28 +34,30 @@ class MainNavigation extends StatefulWidget {
 class _MainNavigationState extends State<MainNavigation> {
   int _currentIndex = 0;
 
-  final List<Widget> _screens = [
-    const HomeScreen(),
-    const AgentsScreen(),
-    const CreateScreen(),
-    const WorkflowsScreen(),
-    const ProfileScreen(),
-  ];
+  void _changeTab(int index) {
+    setState(() {
+      _currentIndex = index;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
+    final List<Widget> screens = [
+      HomeScreen(onTabChange: _changeTab),
+      const AgentsScreen(),
+      const CreateScreen(),
+      const WorkflowsScreen(),
+      const ProfileScreen(),
+    ];
+
     return Scaffold(
       extendBody: true, 
       body: IndexedStack(
         index: _currentIndex,
-        children: _screens,
+        children: screens,
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          setState(() {
-            _currentIndex = 2;
-          });
-        },
+        onPressed: () => _changeTab(2), // الانتقال لشاشة الإنشاء
         backgroundColor: AppColors.primary,
         elevation: 4,
         shape: const CircleBorder(),
@@ -86,7 +88,7 @@ class _MainNavigationState extends State<MainNavigation> {
   Widget _buildNavItem(IconData icon, IconData activeIcon, String label, int index) {
     bool isSelected = _currentIndex == index;
     return GestureDetector(
-      onTap: () => setState(() => _currentIndex = index),
+      onTap: () => _changeTab(index),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
