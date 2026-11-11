@@ -32,7 +32,6 @@ jobs:
           channel: 'stable'
           cache: true
 
-      # فك تشفير المفتاح من الـ Secrets
       - name: Decode Keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
@@ -47,7 +46,6 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
-      # تمرير متغيرات البيئة أثناء البناء
       - name: Build release APK
         env:
           KEYSTORE_PATH: ${{ secrets.KEYSTORE_BASE64 != '' && 'release.keystore' || '' }}
@@ -56,10 +54,11 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: flutter build apk --release
 
+      # تحديث مهم: جعل اسم الإصدار يتغير مع كل بناء
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: latest
+          tag_name: build-${{ github.run_number }}
           name: Latest APK
           files: build/app/outputs/flutter-apk/app-release.apk
         env:
