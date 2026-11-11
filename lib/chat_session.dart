@@ -60,4 +60,4 @@ class ChatHistoryManager {
     String data = jsonEncode(sessionsToSave.map((e) => e.toJson()).toList());
     await prefs.setString(_key, data);
   }
-}
+} 
