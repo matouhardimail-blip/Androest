@@ -12,8 +12,8 @@ dependencies:
     sdk: flutter
   llama_flutter_android: ^0.2.6
   dio: ^5.11.1
-  path_provider: ^2.1.6
-  path: ^1.9.0 # <--- تم تعديل هذا السطر
+  path_provider: ^2.1.5 # <--- تم تعديل هذا السطر
+  path: ^1.9.0
   http: ^1.2.0
   flutter_markdown: ^0.7.3
   file_selector: ^1.0.3
@@ -30,4 +30,4 @@ dev_dependencies:
   flutter_lints: ^4.0.0
 
 flutter:
-  uses-material-design: true 
+  uses-material-design: true
