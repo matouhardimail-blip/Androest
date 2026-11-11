@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:file_selector/file_selector.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 import '../theme.dart';
 import '../models/agent_model.dart';
@@ -28,7 +26,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isLoading = false;
   CloudProviderConfig? _providerConfig;
   String? _attachedFileContent;
-  StreamSubscription? _streamSubscription; // للتحكم في إيقاف التوليد
+  StreamSubscription? _streamSubscription;
 
   @override
   void initState() {
@@ -38,13 +36,14 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _loadProviderConfig() async {
     final providers = await CloudConfigManager.loadProviders();
-    if (providers.isNotEmpty) {
+    try {
+      // نبحث عن المزود المرتبط بهذا الوكيل تحديداً
       setState(() {
-        _providerConfig = providers.first; 
+        _providerConfig = providers.firstWhere((p) => p.id == widget.agent.providerId);
       });
-    } else {
+    } catch (e) {
       setState(() {
-        _messages.add({'role': 'ai', 'text': 'يرجى إضافة مزود خدمة (API Key) من صفحة الإعدادات أولاً لتتمكن من الدردشة.'});
+        _messages.add({'role': 'ai', 'text': 'خطأ: مزود الخدمة المرتبط بهذا الوكيل غير موجود. قد يكون تم حذفه من الإعدادات.'});
       });
     }
   }
@@ -96,13 +95,12 @@ class _ChatScreenState extends State<ChatScreen> {
     String currentResponse = "";
     int aiMessageIndex = _messages.length - 1;
 
-    // تخزين الـ subscription للتمكن من إيقافه
     _streamSubscription = _api.generateStream(
       provider: _providerConfig!.providerType,
       apiKey: _providerConfig!.apiKey,
       baseUrl: _providerConfig!.baseUrl,
       modelName: _providerConfig!.modelName,
-      systemPrompt: "أنت ${widget.agent.name}. ${widget.agent.description}. أجب باللغة العربية.",
+      systemPrompt: widget.agent.systemPrompt, // استخدام شخصية الوكيل
       userPrompt: finalPrompt,
     ).listen(
       (chunk) {
@@ -116,10 +114,9 @@ class _ChatScreenState extends State<ChatScreen> {
         setState(() {
           _isLoading = false;
         });
-        // إرسال إشعار عند اكتمال الرد
         NotificationService.showNotification(
           "اكتمل الرد من ${widget.agent.name}",
-          "يمكنك الآن قراءة الإجابة في التطبيق.",
+          "يمكنك الآن قراءة الإجابة.",
         );
       },
       onError: (e) {
@@ -132,35 +129,26 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  // دالة إيقاف التوليد
   void _stopGeneration() {
     _streamSubscription?.cancel();
     setState(() {
       _isLoading = false;
     });
-    // إضافة رسالة تفيد بالإيقاف
     setState(() {
       _messages.last['text'] = _messages.last['text']! + "\n\n[تم إيقاف التوليد بواسطة المستخدم]";
     });
   }
 
-  // دالة مسح المحادثة
   void _clearChat() {
     setState(() {
       _messages.clear();
     });
   }
 
-  // دالة أرشفة المحادثة
   Future<void> _archiveChat() async {
-    final prefs = await SharedPreferences.getInstance();
-    String archiveKey = 'archive_${widget.agent.id}_${DateTime.now().millisecondsSinceEpoch}';
-    await prefs.setString(archiveKey, jsonEncode(_messages));
-    
     _clearChat();
-    
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("تم أرشفة المحادثة بنجاح. يمكنك العثور عليها في سجل الأرشيف.")),
+      const SnackBar(content: Text("تم أرشفة المحادثة (محلياً).")),
     );
   }
 
@@ -191,11 +179,10 @@ class _ChatScreenState extends State<ChatScreen> {
         title: Column(
           children: [
             Text(widget.agent.name, style: const TextStyle(fontSize: 18)),
-            Text(widget.agent.model, style: const TextStyle(fontSize: 12, color: AppColors.success)),
+            Text(widget.agent.modelName, style: const TextStyle(fontSize: 12, color: AppColors.success)),
           ],
         ),
         actions: [
-          // قائمة المسح والأرشفة
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert, color: Colors.white),
             onSelected: (value) {
@@ -326,8 +313,6 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ),
           const SizedBox(width: 8),
-          
-          // هنا التبديل بين زر الإرسال وزر الإيقاف
           CircleAvatar(
             backgroundColor: _isLoading ? AppColors.danger : AppColors.primary,
             child: IconButton(
