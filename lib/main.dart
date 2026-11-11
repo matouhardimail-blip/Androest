@@ -305,12 +305,12 @@ class _ChatScreenState extends State<ChatScreen> {
     _controller.clear();
 
     setState(() {
-      _currentSession!.messages.add(ChatMessage(role: 'user', text: userPrompt));
+      _currentSession!.messages.add(AgentMessage(role: 'user', text: userPrompt));
       _isLoading = true;
     });
 
     // المرحلة 1
-    setState(() => _currentSession!.messages.add(ChatMessage(role: 'ai', text: "المرحلة 1 (${agent1.name}): جاري البحث والتحليل...")));
+    setState(() => _currentSession!.messages.add(AgentMessage(role: 'ai', text: "المرحلة 1 (${agent1.name}): جاري البحث والتحليل...")));
     int msg1Index = _currentSession!.messages.length - 1;
     String result1 = "";
 
@@ -323,11 +323,11 @@ class _ChatScreenState extends State<ChatScreen> {
       userPrompt: userPrompt,
     )) {
       result1 += token;
-      setState(() => _currentSession!.messages[msg1Index] = ChatMessage(role: 'ai', text: "المرحلة 1 (${agent1.name}):\n" + result1));
+      setState(() => _currentSession!.messages[msg1Index] = AgentMessage(role: 'ai', text: "المرحلة 1 (${agent1.name}):\n" + result1));
     }
 
     // المرحلة 2
-    setState(() => _currentSession!.messages.add(ChatMessage(role: 'ai', text: "المرحلة 2 (${agent2.name}): جاري المراجعة والتدقيق...")));
+    setState(() => _currentSession!.messages.add(AgentMessage(role: 'ai', text: "المرحلة 2 (${agent2.name}): جاري المراجعة والتدقيق...")));
     int msg2Index = _currentSession!.messages.length - 1;
     String result2 = "";
 
@@ -342,7 +342,7 @@ class _ChatScreenState extends State<ChatScreen> {
       userPrompt: prompt2,
     )) {
       result2 += token;
-      setState(() => _currentSession!.messages[msg2Index] = ChatMessage(role: 'ai', text: "المرحلة 2 (${agent2.name}):\n" + result2));
+      setState(() => _currentSession!.messages[msg2Index] = AgentMessage(role: 'ai', text: "المرحلة 2 (${agent2.name}):\n" + result2));
     }
 
     setState(() => _isLoading = false);
@@ -361,9 +361,9 @@ class _ChatScreenState extends State<ChatScreen> {
     _controller.clear();
 
     setState(() {
-      _currentSession!.messages.add(ChatMessage(role: 'user', text: userText));
+      _currentSession!.messages.add(AgentMessage(role: 'user', text: userText));
       _isLoading = true;
-      _currentSession!.messages.add(ChatMessage(role: 'ai', text: "الوكيل المحلي: "));
+      _currentSession!.messages.add(AgentMessage(role: 'ai', text: "الوكيل المحلي: "));
     });
 
     String currentResponse = "";
@@ -372,7 +372,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _llama.generate(prompt: userText, maxTokens: 256, temperature: 0.1).listen(
       (token) {
         currentResponse += token;
-        setState(() => _currentSession!.messages[messageIndex] = ChatMessage(role: 'ai', text: "الوكيل المحلي:\n" + currentResponse));
+        setState(() => _currentSession!.messages[messageIndex] = AgentMessage(role: 'ai', text: "الوكيل المحلي:\n" + currentResponse));
       },
       onDone: () {
         setState(() => _isLoading = false);
@@ -388,7 +388,7 @@ class _ChatScreenState extends State<ChatScreen> {
     String userText = _controller.text;
     
     setState(() {
-      _currentSession!.messages.add(ChatMessage(role: 'user', text: userText));
+      _currentSession!.messages.add(AgentMessage(role: 'user', text: userText));
       _controller.clear();
       _isLoading = true;
       if (_currentSession!.title == "محادثة جديدة") {
@@ -398,7 +398,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
     if (_cloudProviders.isNotEmpty) {
       CloudProviderConfig defaultAgent = _cloudProviders.first;
-      setState(() => _currentSession!.messages.add(ChatMessage(role: 'ai', text: "الوكيل (${defaultAgent.name}): ")));
+      setState(() => _currentSession!.messages.add(AgentMessage(role: 'ai', text: "الوكيل (${defaultAgent.name}): ")));
       int messageIndex = _currentSession!.messages.length - 1;
       String currentResponse = "";
 
@@ -411,7 +411,7 @@ class _ChatScreenState extends State<ChatScreen> {
         userPrompt: userText,
       )) {
         currentResponse += token;
-        setState(() => _currentSession!.messages[messageIndex] = ChatMessage(role: 'ai', text: "الوكيل (${defaultAgent.name}):\n" + currentResponse));
+        setState(() => _currentSession!.messages[messageIndex] = AgentMessage(role: 'ai', text: "الوكيل (${defaultAgent.name}):\n" + currentResponse));
       }
       setState(() => _isLoading = false);
       _saveCurrentSession();
@@ -419,21 +419,21 @@ class _ChatScreenState extends State<ChatScreen> {
       _runLocalAgentFallback(userText);
     } else {
       setState(() {
-        _currentSession!.messages.add(ChatMessage(role: 'ai', text: "الرجاء إضافة مزود سحابي أو تحميل الموديل المحلي."));
+        _currentSession!.messages.add(AgentMessage(role: 'ai', text: "الرجاء إضافة مزود سحابي أو تحميل الموديل المحلي."));
         _isLoading = false;
       });
     }
   }
 
   void _runLocalAgentFallback(String userText) async {
-    setState(() => _currentSession!.messages.add(ChatMessage(role: 'ai', text: "الوكيل المحلي: ")));
+    setState(() => _currentSession!.messages.add(AgentMessage(role: 'ai', text: "الوكيل المحلي: ")));
     String currentResponse = "";
     int messageIndex = _currentSession!.messages.length - 1;
 
     _llama.generate(prompt: userText, maxTokens: 256, temperature: 0.1).listen(
       (token) {
         currentResponse += token;
-        setState(() => _currentSession!.messages[messageIndex] = ChatMessage(role: 'ai', text: "الوكيل المحلي:\n" + currentResponse));
+        setState(() => _currentSession!.messages[messageIndex] = AgentMessage(role: 'ai', text: "الوكيل المحلي:\n" + currentResponse));
       },
       onDone: () {
         setState(() => _isLoading = false);
@@ -489,59 +489,4 @@ class _ChatScreenState extends State<ChatScreen> {
               }
             ),
             const Divider(),
-            ..._sessions.map((s) => ListTile(
-              title: Text(s.title),
-              selected: s.id == _currentSession?.id,
-              onTap: () { setState(() => _currentSession = s); Navigator.pop(context); },
-            )).toList(),
-          ],
-        ),
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.all(12),
-              itemCount: _currentSession?.messages.length ?? 0,
-              itemBuilder: (context, index) {
-                final msg = _currentSession!.messages[index];
-                return _buildMessageBubble(msg.text, msg.role == 'user');
-              },
-            ),
-          ),
-          if (_isLoading) const Padding(padding: EdgeInsets.all(8.0), child: LinearProgressIndicator()),
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _controller,
-                    enabled: !_isLoading,
-                    decoration: const InputDecoration(hintText: "اكتب رسالتك هنا...", border: OutlineInputBorder()),
-                  ),
-                ),
-                IconButton(icon: const Icon(Icons.send, color: Colors.teal), onPressed: _isLoading ? null : _sendMessage),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMessageBubble(String text, bool isUser) {
-    return Align(
-      alignment: isUser ? Alignment.centerLeft : Alignment.centerRight,
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 4),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: isUser ? Colors.teal.shade100 : Colors.grey.shade200,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: isUser ? Text(text) : MarkdownBody(data: text, selectable: true, builders: {'pre': CodeElementBuilder()}),
-      ),
-    );
-  }
-}
+            ..._sessions.map((s)
