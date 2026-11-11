@@ -15,40 +15,43 @@ class AgentsScreen extends StatefulWidget {
 
 class _AgentsScreenState extends State<AgentsScreen> {
   List<AgentModel> _agents = [];
-  List<CloudProviderConfig> _providers = [];
   bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _loadData();
+    _loadAgents();
   }
 
-  Future<void> _loadData() async {
+  Future<void> _loadAgents() async {
     setState(() => _isLoading = true);
     _agents = await AgentManager.loadAgents();
-    _providers = await CloudConfigManager.loadProviders();
     setState(() => _isLoading = false);
   }
 
   // دالة موحدة للإضافة والتعديل
-  void _showAgentDialog({AgentModel? agentToEdit}) {
-    if (_providers.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("الرجاء إضافة مزود خدمة (API) أولاً من الإعدادات.")),
-      );
+  Future<void> _showAgentDialog({AgentModel? agentToEdit}) async {
+    // 1. جلب المزودين بشكل مباشر عند فتح النافذة لضمان ظهور أي إضافات جديدة
+    List<CloudProviderConfig> providers = await CloudConfigManager.loadProviders();
+
+    if (providers.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("الرجاء إضافة مزود خدمة (API) أولاً من الإعدادات.")),
+        );
+      }
       return;
     }
 
-    // إذا كان هناك وكيل يتم تعديله، نستخدم بياناته. وإلا نبدأ ببيانات فارغة
+    if (!mounted) return;
+
     String name = agentToEdit?.name ?? "";
     String desc = agentToEdit?.description ?? "";
     String sysPrompt = agentToEdit?.systemPrompt ?? "أنت مساعد ذكي.";
     
-    // التحقق مما إذا كان مزود الخدمة المرتبط بالوكيل لا يزال موجوداً
-    String selectedProviderId = agentToEdit?.providerId ?? _providers.first.id;
-    if (agentToEdit != null && !_providers.any((p) => p.id == agentToEdit.providerId)) {
-      selectedProviderId = _providers.first.id; // إذا تم حذف المزود، نختار الأول افتراضياً
+    String selectedProviderId = agentToEdit?.providerId ?? providers.first.id;
+    if (agentToEdit != null && !providers.any((p) => p.id == agentToEdit.providerId)) {
+      selectedProviderId = providers.first.id; 
     }
 
     showDialog(
@@ -57,10 +60,11 @@ class _AgentsScreenState extends State<AgentsScreen> {
         return StatefulBuilder(
           builder: (context, setStateDialog) {
             return AlertDialog(
-              backgroundColor: AppColors.cardBackground,
+              backgroundColor: AppColors.cardBackground, // ستايل داكن
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
               title: Text(
                 agentToEdit == null ? "إنشاء وكيل جديد" : "تعديل الوكيل",
-                style: const TextStyle(color: Colors.white),
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
               ),
               content: SingleChildScrollView(
                 child: Column(
@@ -72,23 +76,29 @@ class _AgentsScreenState extends State<AgentsScreen> {
                       decoration: const InputDecoration(
                         labelText: "اسم الوكيل",
                         labelStyle: TextStyle(color: AppColors.textSecondary),
+                        enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                        focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: AppColors.primary)),
                       ),
                       onChanged: (v) => name = v,
                     ),
+                    const SizedBox(height: 10),
                     TextField(
                       style: const TextStyle(color: Colors.white),
                       controller: TextEditingController(text: desc),
                       decoration: const InputDecoration(
                         labelText: "وصف قصير",
                         labelStyle: TextStyle(color: AppColors.textSecondary),
+                        enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                        focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: AppColors.primary)),
                       ),
                       onChanged: (v) => desc = v,
                     ),
-                    const SizedBox(height: 15),
+                    const SizedBox(height: 20),
                     DropdownButtonFormField<String>(
                       value: selectedProviderId,
                       dropdownColor: AppColors.cardBackground,
-                      items: _providers.map((p) => DropdownMenuItem(
+                      iconEnabledColor: AppColors.primary,
+                      items: providers.map((p) => DropdownMenuItem(
                         value: p.id,
                         child: Text("${p.name} (${p.modelName})", style: const TextStyle(color: Colors.white)),
                       )).toList(),
@@ -96,9 +106,11 @@ class _AgentsScreenState extends State<AgentsScreen> {
                       decoration: const InputDecoration(
                         labelText: "مزود الخدمة المرتبط",
                         labelStyle: TextStyle(color: AppColors.textSecondary),
+                        enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                        focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: AppColors.primary)),
                       ),
                     ),
-                    const SizedBox(height: 15),
+                    const SizedBox(height: 20),
                     TextField(
                       style: const TextStyle(color: Colors.white),
                       controller: TextEditingController(text: sysPrompt),
@@ -106,6 +118,8 @@ class _AgentsScreenState extends State<AgentsScreen> {
                       decoration: const InputDecoration(
                         labelText: "شخصية الوكيل (System Prompt)",
                         labelStyle: TextStyle(color: AppColors.textSecondary),
+                        enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                        focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: AppColors.primary)),
                       ),
                       onChanged: (v) => sysPrompt = v,
                     ),
@@ -120,10 +134,9 @@ class _AgentsScreenState extends State<AgentsScreen> {
                 ElevatedButton(
                   onPressed: () async {
                     if (name.isNotEmpty) {
-                      CloudProviderConfig selectedProvider = _providers.firstWhere((p) => p.id == selectedProviderId);
+                      CloudProviderConfig selectedProvider = providers.firstWhere((p) => p.id == selectedProviderId);
                       
                       if (agentToEdit == null) {
-                        // إنشاء وكيل جديد
                         AgentModel newAgent = AgentModel(
                           id: const Uuid().v4(),
                           name: name,
@@ -136,7 +149,6 @@ class _AgentsScreenState extends State<AgentsScreen> {
                         );
                         _agents.add(newAgent);
                       } else {
-                        // تعديل وكيل موجود
                         int index = _agents.indexWhere((a) => a.id == agentToEdit.id);
                         if (index != -1) {
                           _agents[index] = AgentModel(
@@ -154,11 +166,14 @@ class _AgentsScreenState extends State<AgentsScreen> {
                       }
                       
                       await AgentManager.saveAgents(_agents);
-                      _loadData();
+                      _loadAgents();
                       if (mounted) Navigator.pop(context);
                     }
                   },
-                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
+                  ),
                   child: const Text("حفظ", style: TextStyle(color: Colors.white)),
                 ),
               ],
@@ -189,7 +204,7 @@ class _AgentsScreenState extends State<AgentsScreen> {
                   ),
                   IconButton(
                     icon: const Icon(Icons.add_circle, color: AppColors.primary, size: 30),
-                    onPressed: () => _showAgentDialog(), // فتح نافذة الإضافة
+                    onPressed: () => _showAgentDialog(), 
                   )
                 ],
               ),
@@ -216,7 +231,7 @@ class _AgentsScreenState extends State<AgentsScreen> {
                           onDismissed: (direction) async {
                             _agents.removeAt(index);
                             await AgentManager.saveAgents(_agents);
-                            _loadData();
+                            _loadAgents();
                           },
                           child: Container(
                             margin: const EdgeInsets.only(bottom: 15),
@@ -247,7 +262,6 @@ class _AgentsScreenState extends State<AgentsScreen> {
                                     ],
                                   ),
                                 ),
-                                // زر التعديل الجديد
                                 IconButton(
                                   icon: const Icon(Icons.edit, color: AppColors.textSecondary, size: 22),
                                   onPressed: () => _showAgentDialog(agentToEdit: agent),
