@@ -26,13 +26,10 @@ android {
 
     buildTypes {
         release {
+            // استخدام توقيع الـ debug لضمان عمل التحديثات التلقائية
             signingConfig = signingConfigs.getByName("debug")
             isMinifyEnabled = false
             isShrinkResources = false
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
         }
     }
 }
