@@ -9,7 +9,7 @@ class AgentModel {
   final IconData icon;
   final Color color;
   final String category;
-  final bool isConnected;
+  bool isConnected; // تم إزالة final للسماح بالتعديل
   final List<String> capabilities;
 
   AgentModel({

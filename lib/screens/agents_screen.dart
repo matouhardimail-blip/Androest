@@ -10,6 +10,8 @@ class AgentsScreen extends StatefulWidget {
 }
 
 class _AgentsScreenState extends State<AgentsScreen> {
+  String _selectedFilter = 'All';
+
   final List<AgentModel> agents = [
     AgentModel(id: '1', name: 'ChatGPT', description: 'Powerful assistant for everything', provider: 'OpenAI', model: 'GPT-4o', icon: Icons.chat, color: Colors.green, category: 'General', isConnected: true, capabilities: ['Text', 'Vision']),
     AgentModel(id: '2', name: 'Claude', description: 'Thoughtful & helpful AI', provider: 'Anthropic', model: 'Sonnet 3.5', icon: Icons.psychology, color: Colors.orange, category: 'General', isConnected: false, capabilities: ['Text', 'Code']),
@@ -20,6 +22,11 @@ class _AgentsScreenState extends State<AgentsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // فلترة الوكلاء
+    List<AgentModel> filteredAgents = _selectedFilter == 'All' 
+        ? agents 
+        : agents.where((a) => a.category == _selectedFilter).toList();
+
     return Scaffold(
       body: SafeArea(
         child: Column(
@@ -38,15 +45,23 @@ class _AgentsScreenState extends State<AgentsScreen> {
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
-                children: ['All', 'General', 'Coding', 'Research', 'Trading', 'Creative'].map((filter) {
-                  return Container(
-                    margin: const EdgeInsets.only(right: 10),
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: filter == 'All' ? AppColors.primary : AppColors.cardBackground,
-                      borderRadius: BorderRadius.circular(20),
+                children: ['All', 'General', 'Coding', 'Research'].map((filter) {
+                  bool isSelected = _selectedFilter == filter;
+                  return GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _selectedFilter = filter;
+                      });
+                    },
+                    child: Container(
+                      margin: const EdgeInsets.only(right: 10),
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: isSelected ? AppColors.primary : AppColors.cardBackground,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(filter, style: const TextStyle(color: Colors.white)),
                     ),
-                    child: Text(filter, style: const TextStyle(color: Colors.white)),
                   );
                 }).toList(),
               ),
@@ -55,9 +70,9 @@ class _AgentsScreenState extends State<AgentsScreen> {
             Expanded(
               child: ListView.builder(
                 padding: const EdgeInsets.all(16),
-                itemCount: agents.length,
+                itemCount: filteredAgents.length,
                 itemBuilder: (context, index) {
-                  final agent = agents[index];
+                  final agent = filteredAgents[index];
                   return Container(
                     margin: const EdgeInsets.only(bottom: 15),
                     padding: const EdgeInsets.all(15),
@@ -108,7 +123,14 @@ class _AgentsScreenState extends State<AgentsScreen> {
                           ),
                         ),
                         ElevatedButton(
-                          onPressed: () {},
+                          onPressed: () {
+                            setState(() {
+                              agent.isConnected = !agent.isConnected;
+                            });
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(agent.isConnected ? "تم الاتصال بـ ${agent.name}" : "تم قطع الاتصال عن ${agent.name}")),
+                            );
+                          },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: agent.isConnected ? AppColors.success.withOpacity(0.2) : AppColors.primary,
                             foregroundColor: agent.isConnected ? AppColors.success : Colors.white,

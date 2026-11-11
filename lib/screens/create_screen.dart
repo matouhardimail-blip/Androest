@@ -1,8 +1,34 @@
 import 'package:flutter/material.dart';
 import '../theme.dart';
 
-class CreateScreen extends StatelessWidget {
+class CreateScreen extends StatefulWidget {
   const CreateScreen({super.key});
+
+  @override
+  State<CreateScreen> createState() => _CreateScreenState();
+}
+
+class _CreateScreenState extends State<CreateScreen> {
+  bool isChatGPTSelected = true;
+  bool isClaudeSelected = true;
+  bool isPerplexitySelected = false;
+
+  void _showResults() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.cardBackground,
+        title: const Text("Results", style: TextStyle(color: Colors.white)),
+        content: const Text("المهمة قيد التنفيذ... هذه مجرد واجهة تجريبية حالياً.", style: TextStyle(color: Colors.white70)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("إغلاق", style: TextStyle(color: AppColors.primary)),
+          )
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -49,6 +75,7 @@ class CreateScreen extends StatelessWidget {
                 decoration: BoxDecoration(color: AppColors.cardBackground, borderRadius: BorderRadius.circular(15)),
                 child: const TextField(
                   maxLines: 4,
+                  style: TextStyle(color: Colors.white),
                   decoration: InputDecoration(
                     hintText: "e.g., Build a complete trading analysis for XAUUSD...",
                     hintStyle: TextStyle(color: AppColors.textSecondary),
@@ -60,9 +87,18 @@ class CreateScreen extends StatelessWidget {
               const SizedBox(height: 25),
               Text("Select Agents:", style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: 10),
-              _buildAgentSelect("ChatGPT", "Analysis & Research", Icons.chat, Colors.green, true),
-              _buildAgentSelect("Claude", "Deep Analysis", Icons.psychology, Colors.orange, true),
-              _buildAgentSelect("Perplexity", "Real-time Data", Icons.search, Colors.teal, false),
+              _buildAgentSelect(
+                "ChatGPT", "Analysis & Research", Icons.chat, Colors.green, isChatGPTSelected,
+                (val) => setState(() => isChatGPTSelected = val!)
+              ),
+              _buildAgentSelect(
+                "Claude", "Deep Analysis", Icons.psychology, Colors.orange, isClaudeSelected,
+                (val) => setState(() => isClaudeSelected = val!)
+              ),
+              _buildAgentSelect(
+                "Perplexity", "Real-time Data", Icons.search, Colors.teal, isPerplexitySelected,
+                (val) => setState(() => isPerplexitySelected = val!)
+              ),
               const Spacer(),
               Container(
                 padding: const EdgeInsets.all(15),
@@ -92,7 +128,7 @@ class CreateScreen extends StatelessWidget {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: () {},
+                  onPressed: _showResults,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primary,
                     padding: const EdgeInsets.symmetric(vertical: 15),
@@ -108,7 +144,7 @@ class CreateScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildAgentSelect(String name, String desc, IconData icon, Color color, bool isSelected) {
+  Widget _buildAgentSelect(String name, String desc, IconData icon, Color color, bool isSelected, Function(bool?) onChanged) {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(12),
@@ -133,7 +169,7 @@ class CreateScreen extends StatelessWidget {
           Checkbox(
             value: isSelected,
             activeColor: AppColors.primary,
-            onChanged: (v) {},
+            onChanged: onChanged,
           ),
         ],
       ),
