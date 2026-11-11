@@ -1,19 +1,19 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
-class ChatMessage {
+class AgentMessage {
   final String role;
   final String text;
-  ChatMessage({required this.role, required this.text});
+  AgentMessage({required this.role, required this.text});
 
   Map<String, dynamic> toJson() => {'role': role, 'text': text};
-  factory ChatMessage.fromJson(Map<String, dynamic> json) => ChatMessage(role: json['role'], text: json['text']);
+  factory AgentMessage.fromJson(Map<String, dynamic> json) => AgentMessage(role: json['role'], text: json['text']);
 }
 
 class ChatSession {
   final String id;
   String title;
-  List<ChatMessage> messages;
+  List<AgentMessage> messages;
   DateTime lastUpdated;
 
   ChatSession({
@@ -33,7 +33,7 @@ class ChatSession {
   factory ChatSession.fromJson(Map<String, dynamic> json) => ChatSession(
     id: json['id'],
     title: json['title'],
-    messages: (json['messages'] as List).map((m) => ChatMessage.fromJson(m)).toList(),
+    messages: (json['messages'] as List).map((m) => AgentMessage.fromJson(m)).toList(),
     lastUpdated: DateTime.parse(json['lastUpdated']),
   );
 }
@@ -56,7 +56,6 @@ class ChatHistoryManager {
 
   static Future<void> saveSessions(List<ChatSession> sessions) async {
     final prefs = await SharedPreferences.getInstance();
-    // نحفظ آخر 30 محادثة فقط لتوفير المساحة
     final sessionsToSave = sessions.length > 30 ? sessions.sublist(sessions.length - 30) : sessions;
     String data = jsonEncode(sessionsToSave.map((e) => e.toJson()).toList());
     await prefs.setString(_key, data);
