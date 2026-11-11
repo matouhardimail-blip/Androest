@@ -6,9 +6,10 @@ import 'package:markdown/markdown.dart' as md;
 import 'package:llama_flutter_android/llama_flutter_android.dart';
 
 import 'model_downloader.dart';
-import 'trading_agent.dart';
 import 'code_bubble.dart';
-import 'web_search.dart'; // استيراد أداة البحث
+import 'web_search.dart';
+import 'trading_agent.dart';
+import 'agent_system.dart';
 
 void main() {
   runApp(const MyApp());
@@ -19,7 +20,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'AI Agents',
+      title: 'Multi-Agent System',
       theme: ThemeData(primarySwatch: Colors.teal),
       home: const SplashScreen(),
     );
@@ -34,9 +35,6 @@ class CodeElementBuilder extends MarkdownElementBuilder {
   }
 }
 
-// ==========================================
-// 1. شاشة البداية
-// ==========================================
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
   @override
@@ -95,7 +93,7 @@ class _SplashScreenState extends State<SplashScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.smart_toy, size: 80, color: Colors.teal),
+            const Icon(Icons.hub, size: 80, color: Colors.teal),
             const SizedBox(height: 20),
             Text(_status, textAlign: TextAlign.center),
             const SizedBox(height: 20),
@@ -113,9 +111,6 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 }
 
-// ==========================================
-// 2. شاشة الدردشة (المحرك الحقيقي + البحث)
-// ==========================================
 class ChatScreen extends StatefulWidget {
   final String modelPath;
   const ChatScreen({super.key, required this.modelPath});
@@ -131,23 +126,24 @@ class _ChatScreenState extends State<ChatScreen> {
 
   final LlamaController _llama = LlamaController();
   StreamSubscription? _generationSub;
+  late Orchestrator _orchestrator;
 
   @override
   void initState() {
     super.initState();
+    _orchestrator = Orchestrator(_llama);
     _initModel();
   }
 
   Future<void> _initModel() async {
     try {
-      // تم إزالة nThreads لأنها غير مدعومة في هذا الإصدار
       await _llama.loadModel(
         modelPath: widget.modelPath,
         contextSize: 2048,
       );
       setState(() {
         _isModelReady = true;
-        _messages.add({"role": "ai", "text": "الموديل جاهز. يمكنني البحث في الإنترنت إذا طلبت مني ذلك."});
+        _messages.add({"role": "ai", "text": "نظام الوكلاء جاهز. اكتب طلبك (مثلاً: ابحث عن الطقس، أو حلل الذهب)."});
       });
     } catch (e) {
       setState(() {
@@ -156,59 +152,75 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  // دالة التوليد المعدلة لدعم البحث
-  void _generateResponse(String prompt, {bool isSearchResult = false}) {
+  void _executeAgentTask(Agent agent, String prompt, {bool isSearchResult = false}) async {
     String currentResponse = "";
     setState(() {
       _isLoading = true;
-      _messages.add({"role": "ai", "text": ""});
+      _messages.add({"role": "ai", "text": "الوكيل (${agent.name}): "});
     });
 
+    String fullPrompt = "${agent.systemPrompt}\n\nطلب المستخدم: $prompt\nالرد:";
+
     _generationSub = _llama.generate(
-      prompt: prompt,
-      maxTokens: 512,
-      temperature: 0.7,
+      prompt: fullPrompt,
+      maxTokens: 256, // قللنا الحد الأقصى لأننا نريد أمر بحث قصير
+      temperature: 0.1, // حرارة منخفضة جداً لمنع الهلوسة
     ).listen(
       (token) async {
         currentResponse += token;
-        setState(() {
-          _messages.last["text"] = currentResponse;
-        });
+        
+        // إذا كنا في مرحلة طلب البحث، لا نعرض النص للمستخدم، بل ننتظر اكتماله
+        if (!isSearchResult && agent.name == "وكيل البحث") {
+           // نكتفي بتحديث الواجهة برسالة "جاري التفكير..."
+           setState(() {
+             _messages.last["text"] = "الوكيل (${agent.name}):\n🔍 جاري تحليل الطلب للبحث...";
+           });
+        } else {
+           setState(() {
+             _messages.last["text"] = "الوكيل (${agent.name}):\n" + currentResponse;
+           });
+        }
 
-        // فحص هل الموديل قرر البحث؟ (نفحص فقط إذا لم تكن النتيجة بحث سابق)
+        // اصطياد أمر البحث
         if (!isSearchResult && currentResponse.contains("[SEARCH:")) {
           await _generationSub?.cancel();
           
           RegExp regExp = RegExp(r'\[SEARCH:\s*(.*?)\]');
           var match = regExp.firstMatch(currentResponse);
           String query = match?.group(1)?.trim() ?? "";
+          query = query.replaceAll(RegExp(r'[^\w\s]'), '');
 
           if (query.isNotEmpty) {
             setState(() {
-              _messages.last["text"] = "🔍 جاري البحث في الإنترنت عن: $query...";
+              _messages.last["text"] = "الوكيل (${agent.name}):\n🔍 جاري البحث في الإنترنت عن: $query...";
             });
 
             WebSearch searcher = WebSearch();
             String searchResults = await searcher.search(query);
 
-            // حذف رسالة "جاري البحث"
-            setState(() {
-              _messages.removeLast();
-            });
+            setState(() => _messages.removeLast());
 
-            // إعادة إرسال النتائج للموديل ليجيب
-            String newPrompt = """
-لقد بحثت في الإنترنت عن "$query" وحصلت على النتائج التالية:
+            // إعادة التوليد بنتيجة البحث (هنا سيصبح isSearchResult = true)
+            String searchPrompt = """
+لقد بحثت في الإنترنت عن "$query" وحصلت على المعلومات التالية:
 $searchResults
 
-الآن، أجب على المستخدم بناءً على هذه النتائج بوضوح. لا تطلب بحثاً آخر.
+المستخدم سأل: $prompt
+الآن أجب على المستخدم باللغة العربية بناءً على هذه المعلومات. لا تطلب بحثاً آخر. كن دقيقاً.
 """;
-            _generateResponse(newPrompt, isSearchResult: true);
+            _executeAgentTask(agent, searchPrompt, isSearchResult: true);
+          } else {
+             // في حال فشل استخراج الكلمة، نعطي إجابة افتراضية
+             setState(() {
+               _messages.last["text"] = "الوكيل (${agent.name}):\nلم أتمكن من فهم كلمة البحث، جرب صياغة أخرى.";
+               _isLoading = false;
+             });
           }
         }
       },
       onDone: () {
         setState(() => _isLoading = false);
+        _llama.clearContext(); 
       },
       onError: (error) {
         setState(() {
@@ -223,32 +235,25 @@ $searchResults
     if (_controller.text.isEmpty || !_isModelReady) return;
     String userText = _controller.text;
     
-    // إضافة تعليمات النظام لتعليم الموديل كيفية البحث
-    String systemPrompt = """
-أنت مساعد ذكي. إذا لم تكن تعرف الإجابة أو احتجت لمعلومات حديثة، يمكنك البحث في الإنترنت.
-لكي تبحث، اكتب هذه الصيغة فقط: [SEARCH: كلمة_البحث]
-سؤال المستخدم: $userText
-""";
-
     setState(() {
       _messages.add({"role": "user", "text": userText});
       _controller.clear();
     });
-    
-    _generateResponse(systemPrompt);
-  }
 
-  void _runTradingAgent() async {
-    if (!_isModelReady) return;
-    setState(() {
-      _messages.add({"role": "user", "text": "قم بتحليل الذهب الآن."});
-    });
-
-    TradingAgent agent = TradingAgent();
-    String data = await agent.fetchGoldPrices();
-    String prompt = agent.generateTAPrompt(data);
+    Agent assignedAgent = _orchestrator.routeTask(userText);
     
-    _generateResponse(prompt);
+    if (assignedAgent.name == "وكيل الذهب") {
+      setState(() {
+        _messages.add({"role": "ai", "text": "المنسق: سأستخدم وكيل الذهب لجلب الأسعار الحية..."});
+      });
+      TradingAgent tradingAgent = TradingAgent();
+      String data = await tradingAgent.fetchGoldPrices();
+      String promptWithData = "بيانات السوق:\n$data\n\nحلل هذا الاتجاه.";
+      
+      _executeAgentTask(assignedAgent, promptWithData);
+    } else {
+      _executeAgentTask(assignedAgent, userText);
+    }
   }
 
   @override
@@ -263,13 +268,7 @@ $searchResults
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(_isModelReady ? 'وكيل ذكي متصل' : 'جاري تحميل الموديل...'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.show_chart, color: Colors.amber),
-            onPressed: (_isLoading || !_isModelReady) ? null : _runTradingAgent,
-          )
-        ],
+        title: Text(_isModelReady ? 'نظام الوكلاء المتعدد' : 'جاري التحميل...'),
       ),
       body: Column(
         children: [
@@ -293,7 +292,7 @@ $searchResults
                   child: TextField(
                     controller: _controller,
                     enabled: _isModelReady && !_isLoading,
-                    decoration: const InputDecoration(hintText: "اسأل عن أي شيء...", border: OutlineInputBorder()),
+                    decoration: const InputDecoration(hintText: "أعطِ أمراً للمنسق...", border: OutlineInputBorder()),
                     onSubmitted: (_) => _sendMessage(),
                   ),
                 ),
