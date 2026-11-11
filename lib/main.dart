@@ -11,8 +11,9 @@ import 'code_bubble.dart';
 import 'online_api_service.dart';
 import 'chat_session.dart';
 import 'cloud_provider.dart';
-import 'web_search.dart';
-import 'trading_agent.dart';
+import 'agent_system.dart';
+import 'mcp_tools.dart';
+import 'skill_manager.dart';
 
 void main() {
   runApp(const MyApp());
@@ -23,7 +24,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Multi-Agent System',
+      title: 'Multi-Agent Platform',
       theme: ThemeData(primarySwatch: Colors.teal, useMaterial3: true),
       home: const SplashScreen(),
     );
@@ -48,7 +49,6 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreenState extends State<SplashScreen> {
   final ModelManager _modelManager = ModelManager();
-  String _status = "جاري التحقق من الموديل...";
   
   @override
   void initState() {
@@ -66,12 +66,96 @@ class _SplashScreenState extends State<SplashScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(body: Center(child: Text(_status)));
+    return const Scaffold(body: Center(child: CircularProgressIndicator()));
   }
 }
 
 // ==========================================
-// 2. شاشة إدارة المزودين (Providers)
+// 2. شاشة إدارة المهارات (Skills)
+// ==========================================
+class SkillManagerScreen extends StatefulWidget {
+  @override
+  State<SkillManagerScreen> createState() => _SkillManagerScreenState();
+}
+
+class _SkillManagerScreenState extends State<SkillManagerScreen> {
+  List<Skill> _skills = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final s = await SkillManager.loadSkills();
+    setState(() => _skills = s);
+  }
+
+  void _addSkill() {
+    showDialog(
+      context: context,
+      builder: (context) {
+        String name = "", desc = "", prompt = "";
+        return AlertDialog(
+          title: const Text("إضافة مهارة جديدة (Skill)"),
+          content: SingleChildScrollView(
+            child: Column(
+              children: [
+                TextField(decoration: const InputDecoration(labelText: "اسم المهارة"), onChanged: (v) => name = v),
+                TextField(decoration: const InputDecoration(labelText: "وصف قصير"), onChanged: (v) => desc = v),
+                TextField(decoration: const InputDecoration(labelText: "System Prompt"), maxLines: 5, onChanged: (v) => prompt = v),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text("إلغاء")),
+            ElevatedButton(
+              onPressed: () async {
+                if (name.isNotEmpty && prompt.isNotEmpty) {
+                  _skills.add(Skill(id: const Uuid().v4(), name: name, description: desc, systemPrompt: prompt));
+                  await SkillManager.saveSkills(_skills);
+                  _load();
+                  if (mounted) Navigator.pop(context);
+                }
+              },
+              child: const Text("حفظ"),
+            )
+          ],
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text("مهارات الوكلاء (Skills)")),
+      floatingActionButton: FloatingActionButton(onPressed: _addSkill, child: const Icon(Icons.add)),
+      body: ListView.builder(
+        itemCount: _skills.length,
+        itemBuilder: (context, index) {
+          final s = _skills[index];
+          return ListTile(
+            title: Text(s.name),
+            subtitle: Text(s.description),
+            trailing: IconButton(
+              icon: const Icon(Icons.delete, color: Colors.red),
+              onPressed: () async {
+                _skills.removeAt(index);
+                await SkillManager.saveSkills(_skills);
+                _load();
+              },
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+// ==========================================
+// 3. شاشة إدارة المزودين (Providers)
 // ==========================================
 class ProviderManagerScreen extends StatefulWidget {
   @override
@@ -101,16 +185,18 @@ class _ProviderManagerScreenState extends State<ProviderManagerScreen> {
         String key = "";
         String baseUrl = "https://api.openai.com/v1";
         String model = "gpt-4o";
-        
+        List<AgentCapability> selectedCaps = [AgentCapability.textGeneration];
+
         return StatefulBuilder(
           builder: (context, setStateDialog) {
             return AlertDialog(
-              title: const Text("إضافة مزود خدمة"),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
+              title: const Text("إضافة وكيل / مزود خدمة"),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: ListView(
+                  shrinkWrap: true,
                   children: [
-                    TextField(decoration: const InputDecoration(labelText: "اسم الوكيل (مثال: GPT-4)"), onChanged: (v) => name = v),
+                    TextField(decoration: const InputDecoration(labelText: "اسم الوكيل"), onChanged: (v) => name = v),
                     DropdownButtonFormField<String>(
                       value: type,
                       items: const [
@@ -120,18 +206,32 @@ class _ProviderManagerScreenState extends State<ProviderManagerScreen> {
                       onChanged: (v) {
                         setStateDialog(() {
                           type = v!;
-                          if (type == "anthropic") {
-                            baseUrl = "https://api.anthropic.com";
-                          } else {
-                            baseUrl = "https://api.openai.com/v1";
-                          }
+                          baseUrl = type == "anthropic" ? "https://api.anthropic.com" : "https://api.openai.com/v1";
+                          model = type == "anthropic" ? "claude-3-5-sonnet-20240620" : "gpt-4o";
                         });
                       },
-                      decoration: const InputDecoration(labelText: "نوع المزود"),
+                      decoration: const InputDecoration(labelText: "المزود"),
                     ),
                     TextField(decoration: const InputDecoration(labelText: "API Key"), onChanged: (v) => key = v),
                     TextField(decoration: const InputDecoration(labelText: "Base URL"), controller: TextEditingController(text: baseUrl), onChanged: (v) => baseUrl = v),
                     TextField(decoration: const InputDecoration(labelText: "Model Name"), controller: TextEditingController(text: model), onChanged: (v) => model = v),
+                    const SizedBox(height: 15),
+                    const Text("القدرات (Capabilities):", style: TextStyle(fontWeight: FontWeight.bold)),
+                    Wrap(
+                      spacing: 8,
+                      children: AgentCapability.values.map((cap) {
+                        return FilterChip(
+                          label: Text(cap.name),
+                          selected: selectedCaps.contains(cap),
+                          onSelected: (selected) {
+                            setStateDialog(() {
+                              if (selected) selectedCaps.add(cap);
+                              else selectedCaps.remove(cap);
+                            });
+                          },
+                        );
+                      }).toList(),
+                    ),
                   ],
                 ),
               ),
@@ -147,6 +247,7 @@ class _ProviderManagerScreenState extends State<ProviderManagerScreen> {
                         apiKey: key,
                         baseUrl: baseUrl,
                         modelName: model,
+                        capabilities: selectedCaps,
                       ));
                       await CloudConfigManager.saveProviders(_providers);
                       _load();
@@ -166,7 +267,7 @@ class _ProviderManagerScreenState extends State<ProviderManagerScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("إدارة مزودي الخدمة")),
+      appBar: AppBar(title: const Text("إدارة الوكلاء السحابيين")),
       floatingActionButton: FloatingActionButton(onPressed: _addProvider, child: const Icon(Icons.add)),
       body: ListView.builder(
         itemCount: _providers.length,
@@ -174,7 +275,7 @@ class _ProviderManagerScreenState extends State<ProviderManagerScreen> {
           final p = _providers[index];
           return ListTile(
             title: Text(p.name),
-            subtitle: Text("${p.providerType} - ${p.modelName}"),
+            subtitle: Text("${p.providerType} - ${p.modelName}\nالقدرات: ${p.capabilities.map((e) => e.name).join(', ')}"),
             trailing: IconButton(
               icon: const Icon(Icons.delete, color: Colors.red),
               onPressed: () async {
@@ -191,7 +292,7 @@ class _ProviderManagerScreenState extends State<ProviderManagerScreen> {
 }
 
 // ==========================================
-// 3. شاشة الدردشة
+// 4. شاشة الدردشة والتنفيذ
 // ==========================================
 class ChatScreen extends StatefulWidget {
   final String modelPath;
@@ -206,12 +307,11 @@ class _ChatScreenState extends State<ChatScreen> {
   ChatSession? _currentSession;
   
   bool _isLoading = false;
-  bool _isLocalReady = false;
   
-  final LlamaController _llama = LlamaController();
   final OnlineApiService _api = OnlineApiService();
-  
   List<CloudProviderConfig> _cloudProviders = [];
+  List<Skill> _skills = [];
+  Skill? _selectedSkill;
 
   @override
   void initState() {
@@ -220,14 +320,8 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _initApp() async {
-    if (widget.modelPath.isNotEmpty) {
-      try {
-        await _llama.loadModel(modelPath: widget.modelPath, contextSize: 2048);
-        _isLocalReady = true;
-      } catch (e) {}
-    }
-    
     _cloudProviders = await CloudConfigManager.loadProviders();
+    _skills = await SkillManager.loadSkills();
     _sessions = await ChatHistoryManager.loadSessions();
 
     setState(() {
@@ -235,6 +329,7 @@ class _ChatScreenState extends State<ChatScreen> {
         _sessions.add(ChatSession(id: const Uuid().v4(), title: "محادثة جديدة", messages: [], lastUpdated: DateTime.now()));
       }
       _currentSession = _sessions.last;
+      if (_skills.isNotEmpty) _selectedSkill = _skills.first;
     });
   }
 
@@ -245,139 +340,65 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  void _showCoordinationDialog() {
-    if (_cloudProviders.length < 2) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("تحتاج إلى إضافة وكيلين على الأقل من الإعدادات.")));
+  void _routeAndExecute(String userText) async {
+    if (_cloudProviders.isEmpty) {
+      setState(() {
+        _currentSession!.messages.add(AgentMessage(role: 'ai', text: "الرجاء إضافة مزود خدمة من الإعدادات."));
+        _isLoading = false;
+      });
       return;
     }
 
-    CloudProviderConfig agent1 = _cloudProviders[0];
-    CloudProviderConfig agent2 = _cloudProviders[1];
+    AgentCapability requiredCap = AgentCapability.textGeneration;
+    String lower = userText.toLowerCase();
+    
+    // منطق توجيه بسيط
+    if (lower.contains("ارسم") || lower.contains("صورة")) requiredCap = AgentCapability.imageGeneration;
+    if (lower.contains("أنشئ مشروع") || lower.contains("اكتب كود") || lower.contains("عدل ملف")) requiredCap = AgentCapability.codeGeneration;
+    if (lower.contains("ترجم")) requiredCap = AgentCapability.translation;
+    if (lower.contains("لخص")) requiredCap = AgentCapability.summarization;
+    if (lower.contains("ابحث")) requiredCap = AgentCapability.search;
 
-    showDialog(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setStateDialog) {
-            return AlertDialog(
-              title: const Text("تنسيق تبادلي"),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text("اختر الوكيل الأول (الباحث):"),
-                  DropdownButton<CloudProviderConfig>(
-                    isExpanded: true,
-                    value: agent1,
-                    items: _cloudProviders.map((p) => DropdownMenuItem(value: p, child: Text(p.name))).toList(),
-                    onChanged: (v) => setStateDialog(() => agent1 = v!),
-                  ),
-                  const SizedBox(height: 15),
-                  const Text("اختر الوكيل الثاني (المراجع):"),
-                  DropdownButton<CloudProviderConfig>(
-                    isExpanded: true,
-                    value: agent2,
-                    items: _cloudProviders.map((p) => DropdownMenuItem(value: p, child: Text(p.name))).toList(),
-                    onChanged: (v) => setStateDialog(() => agent2 = v!),
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(onPressed: () => Navigator.pop(context), child: const Text("إلغاء")),
-                ElevatedButton(
-                  onPressed: () {
-                    Navigator.pop(context);
-                    _runCrossCoordination(agent1, agent2);
-                  },
-                  child: const Text("تشغيل"),
-                ),
-              ],
-            );
-          }
-        );
-      },
+    CloudProviderConfig? targetProvider = _cloudProviders.firstWhere(
+      (p) => p.capabilities.contains(requiredCap),
+      orElse: () => _cloudProviders.firstWhere((p) => p.capabilities.contains(AgentCapability.textGeneration), orElse: () => _cloudProviders.first),
     );
-  }
 
-  void _runCrossCoordination(CloudProviderConfig agent1, CloudProviderConfig agent2) async {
-    String userPrompt = _controller.text.trim();
-    if (userPrompt.isEmpty) return;
-    _controller.clear();
+    Agent agent = _selectedSkill != null ? AgentFactory.createAgentFromSkill(_selectedSkill!) : AgentFactory.createAgent(requiredCap);
 
     setState(() {
-      _currentSession!.messages.add(AgentMessage(role: 'user', text: userPrompt));
-      _isLoading = true;
+      _currentSession!.messages.add(AgentMessage(role: 'ai', text: "المنسق: سأستخدم (${agent.name}) عبر (${targetProvider.name})..."));
     });
+    int msgIndex = _currentSession!.messages.length;
+    setState(() => _currentSession!.messages.add(AgentMessage(role: 'ai', text: "جاري التنفيذ...")));
 
-    // المرحلة 1
-    setState(() => _currentSession!.messages.add(AgentMessage(role: 'ai', text: "المرحلة 1 (${agent1.name}): جاري البحث والتحليل...")));
-    int msg1Index = _currentSession!.messages.length - 1;
-    String result1 = "";
-
-    await for (final token in _api.generateStream(
-      provider: agent1.providerType,
-      apiKey: agent1.apiKey,
-      baseUrl: agent1.baseUrl,
-      modelName: agent1.modelName,
-      systemPrompt: "أنت باحث خبير. قم بجمع المعلومات الدقيقة والشاملة حول طلب المستخدم باللغة العربية.",
-      userPrompt: userPrompt,
-    )) {
-      result1 += token;
-      setState(() => _currentSession!.messages[msg1Index] = AgentMessage(role: 'ai', text: "المرحلة 1 (${agent1.name}):\n" + result1));
-    }
-
-    // المرحلة 2
-    setState(() => _currentSession!.messages.add(AgentMessage(role: 'ai', text: "المرحلة 2 (${agent2.name}): جاري المراجعة والتدقيق...")));
-    int msg2Index = _currentSession!.messages.length - 1;
-    String result2 = "";
-
-    String prompt2 = "إليك البحث الذي أعدّه وكيل آخر:\n\n$result1\n\nالمستخدم سأل: $userPrompt\nالآن راجع هذا البحث، صحح أخطاءه، وأضف عليه رؤى جديدة باللغة العربية.";
+    // --- توليد نصي (مخصص للمشاريع والترجمة وغيره) ---
+    String currentResponse = "";
+    bool toolExecuted = false;
 
     await for (final token in _api.generateStream(
-      provider: agent2.providerType,
-      apiKey: agent2.apiKey,
-      baseUrl: agent2.baseUrl,
-      modelName: agent2.modelName,
-      systemPrompt: "أنت ناقد ومحلل خبير.",
-      userPrompt: prompt2,
+      provider: targetProvider.providerType,
+      apiKey: targetProvider.apiKey,
+      baseUrl: targetProvider.baseUrl,
+      modelName: targetProvider.modelName,
+      systemPrompt: agent.systemPrompt,
+      userPrompt: userText,
     )) {
-      result2 += token;
-      setState(() => _currentSession!.messages[msg2Index] = AgentMessage(role: 'ai', text: "المرحلة 2 (${agent2.name}):\n" + result2));
+      currentResponse += token;
+      setState(() => _currentSession!.messages[msgIndex] = AgentMessage(role: 'ai', text: currentResponse));
+
+      // نظام MCP
+      if (requiredCap == AgentCapability.codeGeneration && !toolExecuted && currentResponse.contains("[TOOL:")) {
+        toolExecuted = true;
+        String? result = await McpTools.handleToolCall(currentResponse);
+        if (result != null) {
+          setState(() => _currentSession!.messages.add(AgentMessage(role: 'ai', text: "⚙️ تم تنفيذ الأداة: $result")));
+        }
+      }
     }
 
     setState(() => _isLoading = false);
     _saveCurrentSession();
-  }
-
-  void _runLocalAgent() async {
-    if (!_isLocalReady) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("الموديل المحلي غير محمل.")));
-      return;
-    }
-    if (_controller.text.isEmpty) return;
-    
-    String userText = _controller.text;
-    _controller.clear();
-
-    setState(() {
-      _currentSession!.messages.add(AgentMessage(role: 'user', text: userText));
-      _isLoading = true;
-      _currentSession!.messages.add(AgentMessage(role: 'ai', text: "الوكيل المحلي: "));
-    });
-
-    String currentResponse = "";
-    int messageIndex = _currentSession!.messages.length - 1;
-
-    _llama.generate(prompt: userText, maxTokens: 256, temperature: 0.1).listen(
-      (token) {
-        currentResponse += token;
-        setState(() => _currentSession!.messages[messageIndex] = AgentMessage(role: 'ai', text: "الوكيل المحلي:\n" + currentResponse));
-      },
-      onDone: () {
-        setState(() => _isLoading = false);
-        _llama.clearContext(); 
-        _saveCurrentSession();
-      },
-    );
   }
 
   void _sendMessage() async {
@@ -393,90 +414,36 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     });
 
-    if (_cloudProviders.isNotEmpty) {
-      CloudProviderConfig defaultAgent = _cloudProviders.first;
-      setState(() => _currentSession!.messages.add(AgentMessage(role: 'ai', text: "الوكيل (${defaultAgent.name}): ")));
-      int messageIndex = _currentSession!.messages.length - 1;
-      String currentResponse = "";
-
-      await for (final token in _api.generateStream(
-        provider: defaultAgent.providerType,
-        apiKey: defaultAgent.apiKey,
-        baseUrl: defaultAgent.baseUrl,
-        modelName: defaultAgent.modelName,
-        systemPrompt: "أنت مساعد ذكي. أجب باللغة العربية.",
-        userPrompt: userText,
-      )) {
-        currentResponse += token;
-        setState(() => _currentSession!.messages[messageIndex] = AgentMessage(role: 'ai', text: "الوكيل (${defaultAgent.name}):\n" + currentResponse));
-      }
-      setState(() => _isLoading = false);
-      _saveCurrentSession();
-    } else if (_isLocalReady) {
-      _runLocalAgentFallback(userText);
-    } else {
-      setState(() {
-        _currentSession!.messages.add(AgentMessage(role: 'ai', text: "الرجاء إضافة مزود سحابي أو تحميل الموديل المحلي."));
-        _isLoading = false;
-      });
-    }
-  }
-
-  void _runLocalAgentFallback(String userText) async {
-    setState(() => _currentSession!.messages.add(AgentMessage(role: 'ai', text: "الوكيل المحلي: ")));
-    String currentResponse = "";
-    int messageIndex = _currentSession!.messages.length - 1;
-
-    _llama.generate(prompt: userText, maxTokens: 256, temperature: 0.1).listen(
-      (token) {
-        currentResponse += token;
-        setState(() => _currentSession!.messages[messageIndex] = AgentMessage(role: 'ai', text: "الوكيل المحلي:\n" + currentResponse));
-      },
-      onDone: () {
-        setState(() => _isLoading = false);
-        _llama.clearContext(); 
-        _saveCurrentSession();
-      },
-    );
+    _routeAndExecute(userText);
   }
 
   @override
   void dispose() {
-    _llama.dispose();
     _controller.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    // بناء قائمة المحادثات بطريقة آمنة
     List<Widget> sessionTiles = [];
     for (var s in _sessions) {
       sessionTiles.add(
         ListTile(
           title: Text(s.title),
           selected: s.id == _currentSession?.id,
-          onTap: () { 
-            setState(() => _currentSession = s); 
-            Navigator.pop(context); 
-          },
+          onTap: () { setState(() => _currentSession = s); Navigator.pop(context); },
         )
       );
     }
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(_currentSession?.title ?? 'المحادثات'),
+        title: Text(_currentSession?.title ?? 'المنصة'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.phone_android, color: Colors.blueAccent), 
-            tooltip: "الموديل المحلي (طلب صريح)", 
-            onPressed: _isLoading ? null : _runLocalAgent
-          ),
-          IconButton(
-            icon: const Icon(Icons.sync_alt, color: Colors.amber), 
-            tooltip: "تنسيق بين وكيلين (تختارهم)", 
-            onPressed: _isLoading ? null : _showCoordinationDialog
+            icon: const Icon(Icons.extension, color: Colors.amber),
+            tooltip: "إدارة المهارات",
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => SkillManagerScreen())).then((_) => _initApp())
           ),
           IconButton(
             icon: const Icon(Icons.settings), 
@@ -501,12 +468,22 @@ class _ChatScreenState extends State<ChatScreen> {
               }
             ),
             const Divider(),
-            ...sessionTiles, // استخدام القائمة التي بنيناها بأمان
+            ...sessionTiles,
           ],
         ),
       ),
       body: Column(
         children: [
+          if (_skills.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              child: DropdownButtonFormField<Skill>(
+                value: _selectedSkill,
+                decoration: const InputDecoration(labelText: "المهارة النشطة (Skill)", border: OutlineInputBorder()),
+                items: _skills.map((s) => DropdownMenuItem(value: s, child: Text(s.name))).toList(),
+                onChanged: (v) => setState(() => _selectedSkill = v),
+              ),
+            ),
           Expanded(
             child: ListView.builder(
               padding: const EdgeInsets.all(12),
@@ -526,7 +503,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   child: TextField(
                     controller: _controller,
                     enabled: !_isLoading,
-                    decoration: const InputDecoration(hintText: "اكتب رسالتك هنا...", border: OutlineInputBorder()),
+                    decoration: const InputDecoration(hintText: "اكتب طلبك...", border: OutlineInputBorder()),
                   ),
                 ),
                 IconButton(icon: const Icon(Icons.send, color: Colors.teal), onPressed: _isLoading ? null : _sendMessage),
@@ -548,7 +525,13 @@ class _ChatScreenState extends State<ChatScreen> {
           color: isUser ? Colors.teal.shade100 : Colors.grey.shade200,
           borderRadius: BorderRadius.circular(12),
         ),
-        child: isUser ? Text(text) : MarkdownBody(data: text, selectable: true, builders: {'pre': CodeElementBuilder()}),
+        child: isUser 
+          ? Text(text) 
+          : MarkdownBody(
+              data: text, 
+              selectable: true, 
+              builders: {'pre': CodeElementBuilder()},
+            ),
       ),
     );
   }
