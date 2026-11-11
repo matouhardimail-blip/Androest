@@ -4,8 +4,8 @@ publish_to: "none"
 version: 1.0.0+7
 
 environment:
-  sdk: ">=3.10.0 <4.0.0"
-  flutter: ">=3.38.0"
+  sdk: ">=3.5.0 <4.0.0" # تم تعديل هذا السطر ليتوافق مع إصدار Dart الحالي
+  flutter: ">=3.24.0"
 
 dependencies:
   flutter:
@@ -22,7 +22,7 @@ dependencies:
   open_filex: ^4.4.0
   shared_preferences: ^2.2.3
   uuid: ^4.3.3
-  flutter_local_notifications: ^17.2.2 # <--- أضفنا هذه المكتبة
+  flutter_local_notifications: ^17.2.2
 
 dev_dependencies:
   flutter_test:
