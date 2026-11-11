@@ -38,7 +38,6 @@ class ModelManager {
   }
 
   Future<String?> pickDirectory() async {
-    // استخدام file_selector بدلاً من file_picker
     String? selectedDirectory = await getDirectoryPath();
     if (selectedDirectory != null) {
       String currentUrl = await getSavedUrl();
@@ -49,7 +48,6 @@ class ModelManager {
   }
 
   Future<File?> pickAndCopyModelFile() async {
-    // استخدام file_selector بدلاً من file_picker
     const typeGroup = XTypeGroup(label: 'GGUF Models', extensions: ['gguf']);
     final XFile? file = await openFile(acceptedTypeGroups: [typeGroup]);
     
