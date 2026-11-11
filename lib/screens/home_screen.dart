@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import '../theme.dart';
 
 class HomeScreen extends StatelessWidget {
-  const HomeScreen({super.key});
+  final Function(int) onTabChange; // لاستقبال دالة التنقل
+
+  const HomeScreen({super.key, required this.onTabChange});
 
   @override
   Widget build(BuildContext context) {
@@ -23,10 +25,17 @@ class HomeScreen extends StatelessWidget {
                       Text("AI HUB", style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontSize: 22, letterSpacing: 1.2)),
                     ],
                   ),
-                  const CircleAvatar(
-                    radius: 18,
-                    backgroundColor: AppColors.cardBackground,
-                    child: Icon(Icons.notifications_none, color: Colors.white, size: 20),
+                  GestureDetector(
+                    onTap: () {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text("لا توجد إشعارات جديدة حالياً.")),
+                      );
+                    },
+                    child: const CircleAvatar(
+                      radius: 18,
+                      backgroundColor: AppColors.cardBackground,
+                      child: Icon(Icons.notifications_none, color: Colors.white, size: 20),
+                    ),
                   ),
                 ],
               ),
@@ -57,7 +66,7 @@ class HomeScreen extends StatelessWidget {
                     const Text("Your AI journey starts here...", style: TextStyle(color: Colors.white70, fontSize: 14)),
                     const SizedBox(height: 20),
                     ElevatedButton.icon(
-                      onPressed: () {},
+                      onPressed: () => onTabChange(2), // الانتقال لشاشة Create
                       icon: const Icon(Icons.add, size: 18),
                       label: const Text("Create a Task"),
                       style: ElevatedButton.styleFrom(
@@ -91,7 +100,10 @@ class HomeScreen extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text("Popular Agents", style: Theme.of(context).textTheme.titleMedium?.copyWith(fontSize: 18)),
-                  const Text("See all", style: TextStyle(color: AppColors.primary, fontSize: 14)),
+                  GestureDetector(
+                    onTap: () => onTabChange(1), // الانتقال لشاشة الوكلاء
+                    child: const Text("See all", style: TextStyle(color: AppColors.primary, fontSize: 14)),
+                  ),
                 ],
               ),
               const SizedBox(height: 15),
