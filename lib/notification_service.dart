@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart'; // <--- تمت إضافة هذا الاستيراد لحل مشكلة Color
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -20,17 +21,18 @@ class NotificationService {
   }
 
   static Future<void> showNotification(String title, String body) async {
-    const AndroidNotificationDetails androidPlatformChannelSpecifics =
+    // تم إزالة const من هنا لتجنب خطأ الـ Constant Expression
+    final AndroidNotificationDetails androidPlatformChannelSpecifics =
         AndroidNotificationDetails(
       'ai_hub_channel',
       'AI HUB Notifications',
       importance: Importance.max,
       priority: Priority.high,
-      color: Color(0xFF7659E8), // لون التطبيق
+      color: const Color(0xFF7659E8),
     );
 
-    const NotificationDetails platformChannelSpecifics =
-        NotificationDetails(android: androidPlatformDetails(androidPlatformChannelSpecifics));
+    final NotificationDetails platformChannelSpecifics =
+        NotificationDetails(android: androidPlatformChannelSpecifics);
 
     await _notificationsPlugin.show(
       0,
@@ -39,9 +41,4 @@ class NotificationService {
       platformChannelSpecifics,
     );
   }
-}
-
-// دالة مساعدة لتوافق الإصدارات
-NotificationDetails androidPlatformDetails(AndroidNotificationDetails details) {
-  return NotificationDetails(android: details);
 }
