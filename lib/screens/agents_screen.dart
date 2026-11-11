@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:uuid/uuid.dart';
 import '../theme.dart';
 import '../models/agent_model.dart';
-import 'chat_screen.dart'; // استيراد شاشة الدردشة
+import '../agent_manager.dart';
+import '../cloud_provider.dart';
+import 'chat_screen.dart';
 
 class AgentsScreen extends StatefulWidget {
   const AgentsScreen({super.key});
@@ -11,20 +14,114 @@ class AgentsScreen extends StatefulWidget {
 }
 
 class _AgentsScreenState extends State<AgentsScreen> {
-  String _selectedFilter = 'All';
+  List<AgentModel> _agents = [];
+  List<CloudProviderConfig> _providers = [];
+  bool _isLoading = true;
 
-  final List<AgentModel> agents = [
-    AgentModel(id: '1', name: 'ChatGPT', description: 'Powerful assistant', provider: 'OpenAI', model: 'GPT-4o', icon: Icons.chat, color: Colors.green, category: 'General', isConnected: true, capabilities: ['Text']),
-    AgentModel(id: '2', name: 'Claude', description: 'Thoughtful AI', provider: 'Anthropic', model: 'Sonnet 3.5', icon: Icons.psychology, color: Colors.orange, category: 'General', isConnected: true, capabilities: ['Text']),
-    AgentModel(id: '3', name: 'DeepSeek', description: 'Advanced reasoning', provider: 'DeepSeek', model: 'DeepSeek-V3', icon: Icons.code, color: Colors.blue, category: 'Coding', isConnected: true, capabilities: ['Text']),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    setState(() => _isLoading = true);
+    _agents = await AgentManager.loadAgents();
+    _providers = await CloudConfigManager.loadProviders();
+    setState(() => _isLoading = false);
+  }
+
+  void _addAgentDialog() {
+    if (_providers.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("الرجاء إضافة مزود خدمة (API) أولاً من الإعدادات.")),
+      );
+      return;
+    }
+
+    String name = "";
+    String desc = "";
+    String sysPrompt = "أنت مساعد ذكي.";
+    String selectedProviderId = _providers.first.id;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              backgroundColor: AppColors.cardBackground,
+              title: const Text("إنشاء وكيل جديد", style: TextStyle(color: Colors.white)),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      style: const TextStyle(color: Colors.white),
+                      decoration: const InputDecoration(labelText: "اسم الوكيل", labelStyle: TextStyle(color: AppColors.textSecondary)),
+                      onChanged: (v) => name = v,
+                    ),
+                    TextField(
+                      style: const TextStyle(color: Colors.white),
+                      decoration: const InputDecoration(labelText: "وصف قصير", labelStyle: TextStyle(color: AppColors.textSecondary)),
+                      onChanged: (v) => desc = v,
+                    ),
+                    const SizedBox(height: 15),
+                    DropdownButtonFormField<String>(
+                      value: selectedProviderId,
+                      dropdownColor: AppColors.cardBackground,
+                      items: _providers.map((p) => DropdownMenuItem(
+                        value: p.id,
+                        child: Text("${p.name} (${p.modelName})", style: const TextStyle(color: Colors.white)),
+                      )).toList(),
+                      onChanged: (v) => setStateDialog(() => selectedProviderId = v!),
+                      decoration: const InputDecoration(labelText: "مزود الخدمة المرتبط", labelStyle: TextStyle(color: AppColors.textSecondary)),
+                    ),
+                    const SizedBox(height: 15),
+                    TextField(
+                      style: const TextStyle(color: Colors.white),
+                      maxLines: 3,
+                      decoration: const InputDecoration(labelText: "شخصية الوكيل (System Prompt)", labelStyle: TextStyle(color: AppColors.textSecondary)),
+                      onChanged: (v) => sysPrompt = v,
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(context), child: const Text("إلغاء", style: TextStyle(color: Colors.grey))),
+                ElevatedButton(
+                  onPressed: () async {
+                    if (name.isNotEmpty) {
+                      CloudProviderConfig selectedProvider = _providers.firstWhere((p) => p.id == selectedProviderId);
+                      AgentModel newAgent = AgentModel(
+                        id: const Uuid().v4(),
+                        name: name,
+                        description: desc,
+                        providerId: selectedProviderId,
+                        modelName: selectedProvider.modelName,
+                        systemPrompt: sysPrompt,
+                        icon: Icons.smart_toy,
+                        color: AppColors.primary,
+                      );
+                      _agents.add(newAgent);
+                      await AgentManager.saveAgents(_agents);
+                      _loadData();
+                      if (mounted) Navigator.pop(context);
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
+                  child: const Text("حفظ", style: TextStyle(color: Colors.white)),
+                ),
+              ],
+            );
+          }
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    List<AgentModel> filteredAgents = _selectedFilter == 'All' 
-        ? agents 
-        : agents.where((a) => a.category == _selectedFilter).toList();
-
     return Scaffold(
       body: SafeArea(
         child: Column(
@@ -32,107 +129,95 @@ class _AgentsScreenState extends State<AgentsScreen> {
             Padding(
               padding: const EdgeInsets.all(16.0),
               child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Icon(Icons.arrow_back, color: Colors.white),
-                  const SizedBox(width: 15),
-                  Text("Discover Agents", style: Theme.of(context).textTheme.titleMedium),
+                  Row(
+                    children: [
+                      const Icon(Icons.arrow_back, color: Colors.white),
+                      const SizedBox(width: 15),
+                      Text("My Agents", style: Theme.of(context).textTheme.titleMedium),
+                    ],
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.add_circle, color: AppColors.primary, size: 30),
+                    onPressed: _addAgentDialog,
+                  )
                 ],
               ),
             ),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                children: ['All', 'General', 'Coding', 'Research'].map((filter) {
-                  bool isSelected = _selectedFilter == filter;
-                  return GestureDetector(
-                    onTap: () => setState(() => _selectedFilter = filter),
-                    child: Container(
-                      margin: const EdgeInsets.only(right: 10),
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: isSelected ? AppColors.primary : AppColors.cardBackground,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(filter, style: const TextStyle(color: Colors.white)),
-                    ),
-                  );
-                }).toList(),
-              ),
-            ),
-            const SizedBox(height: 15),
             Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.all(16),
-                itemCount: filteredAgents.length,
-                itemBuilder: (context, index) {
-                  final agent = filteredAgents[index];
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 15),
-                    padding: const EdgeInsets.all(15),
-                    decoration: BoxDecoration(
-                      color: AppColors.cardBackground,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: agent.color.withOpacity(0.2),
-                            shape: BoxShape.circle,
+              child: _isLoading 
+                ? const Center(child: CircularProgressIndicator())
+                : _agents.isEmpty 
+                  ? const Center(child: Text("لا يوجد وكلاء. أضف وكيلاً جديداً.", style: TextStyle(color: Colors.grey)))
+                  : ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: _agents.length,
+                      itemBuilder: (context, index) {
+                        final agent = _agents[index];
+                        return Dismissible(
+                          key: Key(agent.id),
+                          direction: DismissDirection.endToStart,
+                          background: Container(
+                            alignment: Alignment.centerRight,
+                            padding: const EdgeInsets.only(right: 20),
+                            color: AppColors.danger,
+                            child: const Icon(Icons.delete, color: Colors.white),
                           ),
-                          child: Icon(agent.icon, color: agent.color, size: 30),
-                        ),
-                        const SizedBox(width: 15),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Text(agent.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
-                                  const SizedBox(width: 8),
-                                  Container(
-                                    width: 8, height: 8,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      color: agent.isConnected ? AppColors.success : Colors.grey,
-                                    ),
-                                  )
-                                ],
-                              ),
-                              Text(agent.description, style: const TextStyle(color: AppColors.textSecondary, fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
-                              const SizedBox(height: 8),
-                              Text(agent.provider, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-                            ],
-                          ),
-                        ),
-                        ElevatedButton(
-                          onPressed: () {
-                            if (!agent.isConnected) {
-                              setState(() => agent.isConnected = true);
-                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("تم الاتصال بـ ${agent.name}")));
-                            } else {
-                              // الانتقال لشاشة الدردشة
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(builder: (context) => ChatScreen(agent: agent)),
-                              );
-                            }
+                          onDismissed: (direction) async {
+                            _agents.removeAt(index);
+                            await AgentManager.saveAgents(_agents);
+                            _loadData();
                           },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: agent.isConnected ? AppColors.success.withOpacity(0.2) : AppColors.primary,
-                            foregroundColor: agent.isConnected ? AppColors.success : Colors.white,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          child: Container(
+                            margin: const EdgeInsets.only(bottom: 15),
+                            padding: const EdgeInsets.all(15),
+                            decoration: BoxDecoration(
+                              color: AppColors.cardBackground,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: agent.color.withOpacity(0.2),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(agent.icon, color: agent.color, size: 30),
+                                ),
+                                const SizedBox(width: 15),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(agent.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+                                      Text(agent.description, style: const TextStyle(color: AppColors.textSecondary, fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                      const SizedBox(height: 8),
+                                      Text(agent.modelName, style: const TextStyle(color: AppColors.success, fontSize: 12)),
+                                    ],
+                                  ),
+                                ),
+                                ElevatedButton(
+                                  onPressed: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(builder: (context) => ChatScreen(agent: agent)),
+                                    );
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppColors.primary.withOpacity(0.2),
+                                    foregroundColor: AppColors.primary,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                  ),
+                                  child: const Text("Open"),
+                                )
+                              ],
+                            ),
                           ),
-                          child: Text(agent.isConnected ? "Open" : "Connect"),
-                        )
-                      ],
+                        );
+                      },
                     ),
-                  );
-                },
-              ),
             ),
           ],
         ),
