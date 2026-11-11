@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../theme.dart';
 import 'provider_manager_screen.dart';
 import '../update_service.dart';
+import '../notification_service.dart'; // استيراد الإشعارات
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -46,10 +47,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
             backgroundColor: AppColors.danger,
           ),
         );
+      } else if (status == "success") {
+         NotificationService.showNotification("تحديث AI HUB", "تم تحميل النسخة الجديدة بنجاح، جاري التثبيت...");
       }
     }
   }
 
+  // ... (باقي كود شاشة Profile كما هو بدون تغيير)
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -58,6 +62,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           padding: const EdgeInsets.all(16),
           child: Column(
             children: [
+              // ... بطاقة المستخدم
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
@@ -95,6 +100,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               const SizedBox(height: 25),
 
+              // زر التحديث
               GestureDetector(
                 onTap: _isUpdating ? null : _handleUpdate,
                 child: Container(
@@ -136,6 +142,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ),
 
+              // ... باقي الإعدادات
               _buildSettingItem(
                 context,
                 Icons.key, 
@@ -153,27 +160,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 "App Preferences",
                 onTap: () {
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("قريباً...")));
-                }
-              ),
-              _buildSettingItem(
-                context, 
-                Icons.language, 
-                "Language (Arabic / English)",
-                onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("قريباً...")));
-                }
-              ),
-              _buildSettingItem(
-                context, 
-                Icons.info, 
-                "About AI HUB",
-                onTap: () {
-                  showAboutDialog(
-                    context: context,
-                    applicationName: "AI HUB",
-                    applicationVersion: "1.0.0",
-                    applicationLegalese: "All AI Agents in One Place",
-                  );
                 }
               ),
             ],

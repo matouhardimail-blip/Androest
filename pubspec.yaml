@@ -1,7 +1,7 @@
 name: agentphone
-description: "AgentPhone — مساعد ذكاء اصطناعي يعمل بالكامل على جهاز Samsung Galaxy A52 دون اتصال بالإنترنت."
+description: "AgentPhone — منصة وكلاء ذكاء اصطناعي متعددة."
 publish_to: "none"
-version: 1.0.0+4
+version: 1.0.0+7
 
 environment:
   sdk: ">=3.10.0 <4.0.0"
@@ -22,6 +22,7 @@ dependencies:
   open_filex: ^4.4.0
   shared_preferences: ^2.2.3
   uuid: ^4.3.3
+  flutter_local_notifications: ^17.2.2 # <--- أضفنا هذه المكتبة
 
 dev_dependencies:
   flutter_test:
