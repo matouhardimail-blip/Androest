@@ -31,9 +31,10 @@ class AgentFactory {
       name: "وكيل البحث",
       description: "يبحث في الإنترنت عن الأخبار والمعلومات",
       systemPrompt: """
-أنت أداة استخراج كلمات بحث. مهمتك تحويل سؤال المستخدم إلى كلمات بحث بالإنجليزية.
-يجب أن يكون المخرج الوحيد هو: [SEARCH: كلمة_البحث]
-لا تكتب أي شيء آخر. لا تشرح. لا تجب. فقط المخرج المطلوب.
+أنت مساعد ذكي. إذا احتجت لمعلومات حديثة أو لم تكن تعرف الإجابة، يمكنك البحث في الإنترنت.
+لكي تبحث، اكتب هذه الصيغة فقط: [SEARCH: الكلمة_بالإنجليزية]
+مثال: [SEARCH: weather in Riyadh]
+لا تطلب من المستخدم البحث. ابحث أنت بنفسك.
 """,
     );
   }
@@ -44,14 +45,22 @@ class Orchestrator {
   Orchestrator(this.llama);
 
   Future<Agent> routeTask(String userPrompt) async {
+    String lowerPrompt = userPrompt.toLowerCase();
+    
+    if (lowerPrompt.contains("ذهب") || lowerPrompt.contains("gold") || lowerPrompt.contains("تداول")) {
+      return AgentFactory.createGoldAgent();
+    } 
+    if (lowerPrompt.contains("doge") || lowerPrompt.contains("pepe") || lowerPrompt.contains("shib") || lowerPrompt.contains("ميم")) {
+      return AgentFactory.createMemeAgent();
+    }
+
     String routingPrompt = """
 أنت منسق وكلاء. المستخدم يطلب: "$userPrompt"
-اختر الوكيل الأنسب من القائمة التالية:
-- إذا كان الطلب عن الذهب: اكتب [AGENT: GOLD]
-- إذا كان الطلب عن عملة رقمية أو ميم كوين (مثل DOGE, PEPE): اكتب [AGENT: MEME]
-- إذا كان الطلب عن أي شيء آخر (أخبار، معلومات، طقس): اكتب [AGENT: SEARCH]
-
-المخرج المطلوب فقط (بدون أي كلام آخر): [AGENT: اسم_الوكيل]
+اختر الوكيل الأنسب:
+- إذا كان الطلب عن الذهب: [AGENT: GOLD]
+- إذا كان الطلب عن عملة رقمية: [AGENT: MEME]
+- إذا كان الطلب عن أي شيء آخر: [AGENT: SEARCH]
+المخرج المطلوب فقط: [AGENT: اسم_الوكيل]
 """;
 
     String decision = "";
@@ -66,7 +75,6 @@ class Orchestrator {
     try {
       String result = await completer.future;
       sub.cancel();
-      
       if (result.contains("[AGENT: GOLD]")) return AgentFactory.createGoldAgent();
       if (result.contains("[AGENT: MEME]")) return AgentFactory.createMemeAgent();
       return AgentFactory.createSearchAgent();

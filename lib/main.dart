@@ -5,11 +5,12 @@ import 'dart:io';
 import 'package:markdown/markdown.dart' as md;
 import 'package:llama_flutter_android/llama_flutter_android.dart';
 
-import 'model_downloader.dart';
+import 'model_manager.dart';
 import 'code_bubble.dart';
 import 'web_search.dart';
 import 'trading_agent.dart';
 import 'agent_system.dart';
+import 'update_service.dart';
 
 void main() {
   runApp(const MyApp());
@@ -42,41 +43,76 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> {
+  final ModelManager _modelManager = ModelManager();
   double _progress = 0.0;
   bool _isDownloading = false;
   String _status = "جاري التحقق من الموديل...";
+  String _currentDir = "";
+  final TextEditingController _urlController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _checkAndDownload();
+    _checkState();
   }
 
-  Future<void> _checkAndDownload() async {
-    final downloader = ModelDownloader();
-    File? modelFile = await downloader.getModelFile();
+  Future<void> _checkState() async {
+    String dir = await _modelManager.getSavedDirectory();
+    String url = await _modelManager.getSavedUrl();
+    _urlController.text = url;
+    setState(() => _currentDir = dir);
 
+    File? modelFile = await _modelManager.getModelFile();
     if (modelFile != null) {
       _goToChat(modelFile.path);
-      return;
+    } else {
+      setState(() => _status = "الموديل غير موجود في المجلد المحدد. يمكنك تحميله أو اختياره من الهاتف.");
     }
+  }
 
+  Future<void> _startDownload() async {
     setState(() {
-      _status = "جاري تحميل الموديل (1.67 جيجا)... يرجى استخدام Wi-Fi.";
+      _status = "جاري تحميل الموديل...";
       _isDownloading = true;
     });
 
     try {
-      File downloadedFile = await downloader.downloadModel((progress) {
-        setState(() => _progress = progress);
-      });
+      File downloadedFile = await _modelManager.downloadModel(
+        _urlController.text.trim(),
+        (progress) => setState(() => _progress = progress),
+      );
       _goToChat(downloadedFile.path);
     } catch (e) {
       setState(() {
-        _status = "فشل التحميل. تأكد من الإنترنت وأعد المحاولة.";
+        _status = "فشل التحميل. تأكد من الرابط والإنترنت.";
         _isDownloading = false;
       });
     }
+  }
+
+  Future<void> _pickFolder() async {
+    String? newDir = await _modelManager.pickDirectory();
+    if (newDir != null) {
+      setState(() => _currentDir = newDir);
+      _checkState();
+    }
+  }
+
+  Future<void> _pickFile() async {
+    File? file = await _modelManager.pickAndCopyModelFile();
+    if (file != null) {
+      _goToChat(file.path);
+    }
+  }
+
+  Future<void> _checkForUpdates() async {
+    setState(() {
+      _status = "جاري فحص التحديثات...";
+      _isDownloading = true;
+    });
+    UpdateService updateService = UpdateService();
+    await updateService.checkAndUpdate((p) => setState(() => _progress = p));
+    setState(() => _isDownloading = false);
   }
 
   void _goToChat(String modelPath) {
@@ -89,21 +125,58 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Center(
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20.0),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
+            const SizedBox(height: 50),
             const Icon(Icons.hub, size: 80, color: Colors.teal),
             const SizedBox(height: 20),
-            Text(_status, textAlign: TextAlign.center),
+            Text(_status, textAlign: TextAlign.center, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             const SizedBox(height: 20),
+            
             if (_isDownloading) ...[
-              LinearProgressIndicator(value: _progress),
+              LinearProgressIndicator(value: _progress > 0 ? _progress : null),
               const SizedBox(height: 10),
-              Text("${(_progress * 100).toStringAsFixed(1)}%"),
-            ],
-            if (!_isDownloading && _status.contains("فشل"))
-              ElevatedButton(onPressed: _checkAndDownload, child: const Text("إعادة المحاولة"))
+              if (_progress > 0) Text("${(_progress * 100).toStringAsFixed(1)}%"),
+            ] else ...[
+              Card(
+                child: ListTile(
+                  title: const Text("مجلد حفظ الموديل"),
+                  subtitle: Text(_currentDir, style: const TextStyle(fontSize: 12)),
+                  trailing: IconButton(icon: const Icon(Icons.folder, color: Colors.teal), onPressed: _pickFolder),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _urlController,
+                decoration: const InputDecoration(
+                  labelText: "رابط تحميل الموديل (GGUF)",
+                  border: OutlineInputBorder(),
+                ),
+                maxLines: 1,
+              ),
+              const SizedBox(height: 20),
+              ElevatedButton.icon(
+                onPressed: _startDownload,
+                icon: const Icon(Icons.download),
+                label: const Text("تحميل الموديل لهذا المجلد"),
+              ),
+              const SizedBox(height: 10),
+              ElevatedButton.icon(
+                onPressed: _pickFile,
+                icon: const Icon(Icons.folder_open),
+                label: const Text("اختيار ملف موديل موجود مسبقاً"),
+              ),
+              const SizedBox(height: 30),
+              const Divider(),
+              TextButton.icon(
+                onPressed: _checkForUpdates,
+                icon: const Icon(Icons.update),
+                label: const Text("تحديث التطبيق"),
+              ),
+            ]
           ],
         ),
       ),
@@ -137,18 +210,13 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _initModel() async {
     try {
-      await _llama.loadModel(
-        modelPath: widget.modelPath,
-        contextSize: 2048,
-      );
+      await _llama.loadModel(modelPath: widget.modelPath, contextSize: 2048);
       setState(() {
         _isModelReady = true;
-        _messages.add({"role": "ai", "text": "نظام الوكلاء جاهز. اكتب طلبك (مثلاً: ابحث عن الطقس، حلل الذهب، حلل عملة DOGE)."});
+        _messages.add({"role": "ai", "text": "نظام الوكلاء جاهز. اكتب طلبك."});
       });
     } catch (e) {
-      setState(() {
-        _messages.add({"role": "ai", "text": "فشل تحميل الموديل: $e"});
-      });
+      setState(() => _messages.add({"role": "ai", "text": "فشل تحميل الموديل: $e"}));
     }
   }
 
@@ -161,40 +229,24 @@ class _ChatScreenState extends State<ChatScreen> {
 
     String fullPrompt = "${agent.systemPrompt}\n\nطلب المستخدم: $prompt\nالرد:";
 
-    _generationSub = _llama.generate(
-      prompt: fullPrompt,
-      maxTokens: 256,
-      temperature: 0.1,
-    ).listen(
+    _generationSub = _llama.generate(prompt: fullPrompt, maxTokens: 256, temperature: 0.1).listen(
       (token) async {
         currentResponse += token;
         
-        if (!isSearchResult && agent.name == "وكيل البحث") {
-           setState(() {
-             _messages.last["text"] = "الوكيل (${agent.name}):\n🔍 جاري تحليل الطلب للبحث...";
-           });
-        } else {
-           setState(() {
-             _messages.last["text"] = "الوكيل (${agent.name}):\n" + currentResponse;
-           });
-        }
+        setState(() => _messages.last["text"] = "الوكيل (${agent.name}):\n" + currentResponse);
 
-        if (!isSearchResult && currentResponse.contains("[SEARCH:")) {
+        if (!isSearchResult && currentResponse.toUpperCase().contains("SEARCH")) {
           await _generationSub?.cancel();
           
-          RegExp regExp = RegExp(r'\[SEARCH:\s*(.*?)\]');
+          RegExp regExp = RegExp(r'SEARCH:\s*(.*?)[\]\n]', caseSensitive: false);
           var match = regExp.firstMatch(currentResponse);
           String query = match?.group(1)?.trim() ?? "";
           query = query.replaceAll(RegExp(r'[^\w\s]'), '');
 
           if (query.isNotEmpty) {
-            setState(() {
-              _messages.last["text"] = "الوكيل (${agent.name}):\n🔍 جاري البحث في الإنترنت عن: $query...";
-            });
-
+            setState(() => _messages.last["text"] = "الوكيل (${agent.name}):\n🔍 جاري البحث في الإنترنت عن: $query...");
             WebSearch searcher = WebSearch();
             String searchResults = await searcher.search(query);
-
             setState(() => _messages.removeLast());
 
             String searchPrompt = """
@@ -202,19 +254,24 @@ class _ChatScreenState extends State<ChatScreen> {
 $searchResults
 
 المستخدم سأل: $prompt
-الآن أجب على المستخدم باللغة العربية بناءً على هذه المعلومات. لا تطلب بحثاً آخر. كن دقيقاً.
+الآن أجب على المستخدم باللغة العربية بناءً على هذه المعلومات.
 """;
             _executeAgentTask(agent, searchPrompt, isSearchResult: true);
           } else {
              setState(() {
-               _messages.last["text"] = "الوكيل (${agent.name}):\nلم أتمكن من فهم كلمة البحث، جرب صياغة أخرى.";
+               _messages.last["text"] = "الوكيل (${agent.name}):\nلم أتمكن من فهم كلمة البحث.";
                _isLoading = false;
              });
           }
         }
       },
       onDone: () {
-        setState(() => _isLoading = false);
+        setState(() {
+          _isLoading = false;
+          if (!isSearchResult && agent.name == "وكيل البحث" && !currentResponse.toUpperCase().contains("SEARCH")) {
+             _messages.last["text"] = "الوكيل (${agent.name}):\n" + currentResponse;
+          }
+        });
         _llama.clearContext(); 
       },
       onError: (error) {
@@ -243,7 +300,6 @@ $searchResults
       TradingAgent tradingAgent = TradingAgent();
       String data = await tradingAgent.fetchGoldPrices();
       _executeAgentTask(assignedAgent, "بيانات السوق:\n$data\nحلل الاتجاه.");
-      
     } else if (assignedAgent.name == "وكيل الميم كوينز") {
       setState(() => _messages.add({"role": "ai", "text": "المنسق: سأستخدم وكيل الميم كوينز..."}));
       String symbol = "DOGE"; 
@@ -253,7 +309,6 @@ $searchResults
       TradingAgent tradingAgent = TradingAgent();
       String data = await tradingAgent.fetchMemeCoinPrices(symbol);
       _executeAgentTask(assignedAgent, "بيانات العملة:\n$data\nحلل هذا الاتجاه وأعطني قراراً.");
-      
     } else {
       _executeAgentTask(assignedAgent, userText);
     }
@@ -270,9 +325,7 @@ $searchResults
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(_isModelReady ? 'نظام الوكلاء المتعدد' : 'جاري التحميل...'),
-      ),
+      appBar: AppBar(title: Text(_isModelReady ? 'نظام الوكلاء المتعدد' : 'جاري التحميل...')),
       body: Column(
         children: [
           Expanded(
@@ -285,8 +338,7 @@ $searchResults
               },
             ),
           ),
-          if (_isLoading)
-            const Padding(padding: EdgeInsets.all(8.0), child: CircularProgressIndicator()),
+          if (_isLoading) const Padding(padding: EdgeInsets.all(8.0), child: CircularProgressIndicator()),
           Padding(
             padding: const EdgeInsets.all(8.0),
             child: Row(
