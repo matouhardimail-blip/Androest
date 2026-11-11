@@ -3,7 +3,6 @@ description: "AgentPhone — مساعد ذكاء اصطناعي يعمل بال�
 publish_to: "none"
 version: 1.0.0+2
 
-# Flutter 3.47.x (أحدث إصدار مستقر، يأتي مع Dart 3.13)
 environment:
   sdk: ">=3.10.0 <4.0.0"
   flutter: ">=3.38.0"
@@ -11,24 +10,17 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-
-  # محرك llama.cpp / GGUF — مرخّص MIT، مخصّص لأندرويد.
-  # يوفّر: بثّ الرموز (Pigeon)، قوالب ChatML، إيقاف التوليد، تفريغ السياق،
-  # كشف الذاكرة الحرة، وتحسينات ARM64 NEON + dotprod (مهمة لـ Snapdragon 720G).
   llama_flutter_android: ^0.2.6
-
-  # تنزيل النموذج مع تتبّع التقدّم وإمكانية الاستئناف (Range requests)
   dio: ^5.11.1
-
-  # مسار تخزين دائم داخل مساحة التطبيق ← لا يحتاج أي إذن تخزين
   path_provider: ^2.1.6
   path: ^1.9.1
-
-  # إضافات وكيل التداول والإنترنت
   http: ^1.2.0
-  
-  # دعم عرض الأكواد (Markdown) وزر النسخ المنفصل
   flutter_markdown: ^0.7.3
+  file_picker: ^8.0.0
+  package_info_plus: ^8.0.0
+  permission_handler: ^11.3.1
+  open_filex: ^4.4.0
+  shared_preferences: ^2.2.3
 
 dev_dependencies:
   flutter_test:
