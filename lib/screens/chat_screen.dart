@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:file_selector/file_selector.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import '../theme.dart';
 import '../models/agent_model.dart';
 import '../cloud_provider.dart';
 import '../online_api_service.dart';
+import '../notification_service.dart';
 
 class ChatScreen extends StatefulWidget {
   final AgentModel agent;
@@ -24,6 +28,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isLoading = false;
   CloudProviderConfig? _providerConfig;
   String? _attachedFileContent;
+  StreamSubscription? _streamSubscription; // للتحكم في إيقاف التوليد
 
   @override
   void initState() {
@@ -35,7 +40,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final providers = await CloudConfigManager.loadProviders();
     if (providers.isNotEmpty) {
       setState(() {
-        _providerConfig = providers.first; // نستخدم أول مزود تم إضافته
+        _providerConfig = providers.first; 
       });
     } else {
       setState(() {
@@ -44,7 +49,6 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  // دالة رفع الملفات (مثل ملفات المهارات أو النصوص)
   Future<void> _pickFile() async {
     try {
       const typeGroup = XTypeGroup(label: 'Documents', extensions: ['txt', 'json', 'md', 'csv']);
@@ -74,8 +78,6 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     String userText = _controller.text.trim();
-    
-    // إذا كان هناك ملف مرفق، نمرره مع النص
     String finalPrompt = userText;
     if (_attachedFileContent != null) {
       finalPrompt = "محتوى الملف المرفق:\n$_attachedFileContent\n\nطلب المستخدم:\n$userText";
@@ -83,7 +85,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
     setState(() {
       _messages.add({'role': 'user', 'text': userText.isEmpty ? "تم إرفاق ملف" : userText});
-      _messages.add({'role': 'ai', 'text': ''}); // فقاعة فارغة للرد
+      _messages.add({'role': 'ai', 'text': ''}); 
       _isLoading = true;
       _controller.clear();
       _attachedFileContent = null;
@@ -94,30 +96,72 @@ class _ChatScreenState extends State<ChatScreen> {
     String currentResponse = "";
     int aiMessageIndex = _messages.length - 1;
 
-    try {
-      await for (final chunk in _api.generateStream(
-        provider: _providerConfig!.providerType,
-        apiKey: _providerConfig!.apiKey,
-        baseUrl: _providerConfig!.baseUrl,
-        modelName: _providerConfig!.modelName,
-        systemPrompt: "أنت ${widget.agent.name}. ${widget.agent.description}. أجب باللغة العربية.",
-        userPrompt: finalPrompt,
-      )) {
+    // تخزين الـ subscription للتمكن من إيقافه
+    _streamSubscription = _api.generateStream(
+      provider: _providerConfig!.providerType,
+      apiKey: _providerConfig!.apiKey,
+      baseUrl: _providerConfig!.baseUrl,
+      modelName: _providerConfig!.modelName,
+      systemPrompt: "أنت ${widget.agent.name}. ${widget.agent.description}. أجب باللغة العربية.",
+      userPrompt: finalPrompt,
+    ).listen(
+      (chunk) {
         currentResponse += chunk;
         setState(() {
           _messages[aiMessageIndex]['text'] = currentResponse;
         });
         _scrollToBottom();
-      }
-    } catch (e) {
-      setState(() {
-        _messages[aiMessageIndex]['text'] = "خطأ: $e";
-      });
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
-    }
+      },
+      onDone: () {
+        setState(() {
+          _isLoading = false;
+        });
+        // إرسال إشعار عند اكتمال الرد
+        NotificationService.showNotification(
+          "اكتمل الرد من ${widget.agent.name}",
+          "يمكنك الآن قراءة الإجابة في التطبيق.",
+        );
+      },
+      onError: (e) {
+        setState(() {
+          _messages[aiMessageIndex]['text'] = "❌ خطأ: $e";
+          _isLoading = false;
+        });
+      },
+      cancelOnError: true,
+    );
+  }
+
+  // دالة إيقاف التوليد
+  void _stopGeneration() {
+    _streamSubscription?.cancel();
+    setState(() {
+      _isLoading = false;
+    });
+    // إضافة رسالة تفيد بالإيقاف
+    setState(() {
+      _messages.last['text'] = _messages.last['text']! + "\n\n[تم إيقاف التوليد بواسطة المستخدم]";
+    });
+  }
+
+  // دالة مسح المحادثة
+  void _clearChat() {
+    setState(() {
+      _messages.clear();
+    });
+  }
+
+  // دالة أرشفة المحادثة
+  Future<void> _archiveChat() async {
+    final prefs = await SharedPreferences.getInstance();
+    String archiveKey = 'archive_${widget.agent.id}_${DateTime.now().millisecondsSinceEpoch}';
+    await prefs.setString(archiveKey, jsonEncode(_messages));
+    
+    _clearChat();
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("تم أرشفة المحادثة بنجاح. يمكنك العثور عليها في سجل الأرشيف.")),
+    );
   }
 
   void _scrollToBottom() {
@@ -136,6 +180,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void dispose() {
     _controller.dispose();
     _scrollController.dispose();
+    _streamSubscription?.cancel();
     super.dispose();
   }
 
@@ -149,6 +194,38 @@ class _ChatScreenState extends State<ChatScreen> {
             Text(widget.agent.model, style: const TextStyle(fontSize: 12, color: AppColors.success)),
           ],
         ),
+        actions: [
+          // قائمة المسح والأرشفة
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert, color: Colors.white),
+            onSelected: (value) {
+              if (value == 'clear') _clearChat();
+              if (value == 'archive') _archiveChat();
+            },
+            itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+              const PopupMenuItem<String>(
+                value: 'clear',
+                child: Row(
+                  children: [
+                    Icon(Icons.delete_outline, color: AppColors.danger, size: 20),
+                    SizedBox(width: 8),
+                    Text('مسح المحادثة', style: TextStyle(color: Colors.white)),
+                  ],
+                ),
+              ),
+              const PopupMenuItem<String>(
+                value: 'archive',
+                child: Row(
+                  children: [
+                    Icon(Icons.archive_outlined, color: AppColors.primary, size: 20),
+                    SizedBox(width: 8),
+                    Text('أرشفة المحادثة', style: TextStyle(color: Colors.white)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
       body: Column(
         children: [
@@ -249,17 +326,18 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ),
           const SizedBox(width: 8),
+          
+          // هنا التبديل بين زر الإرسال وزر الإيقاف
           CircleAvatar(
-            backgroundColor: AppColors.primary,
-            child: _isLoading 
-              ? const Padding(
-                  padding: EdgeInsets.all(8.0),
-                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                )
-              : IconButton(
-                  icon: const Icon(Icons.send, color: Colors.white, size: 20),
-                  onPressed: _sendMessage,
-                ),
+            backgroundColor: _isLoading ? AppColors.danger : AppColors.primary,
+            child: IconButton(
+              icon: Icon(
+                _isLoading ? Icons.stop : Icons.send, 
+                color: Colors.white, 
+                size: 20
+              ),
+              onPressed: _isLoading ? _stopGeneration : _sendMessage,
+            ),
           ),
         ],
       ),
