@@ -24,10 +24,27 @@ android {
         versionName = flutter.versionName
     }
 
+    // قراءة إعدادات التوقيع من متغيرات البيئة
+    signingConfigs {
+        create("release") {
+            val keystorePath = System.getenv("KEYSTORE_PATH")
+            if (keystorePath != null) {
+                storeFile = file(keystorePath)
+                storePassword = System.getenv("KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("KEY_ALIAS")
+                keyPassword = System.getenv("KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // استخدام توقيع الـ debug لضمان عمل التحديثات التلقائية
-            signingConfig = signingConfigs.getByName("debug")
+            // استخدام مفتاح التوقيع الثابت إذا كان متاحاً
+            signingConfig = if (System.getenv("KEYSTORE_PATH") != null) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug") // احتياطي للتجربة المحلية
+            }
             isMinifyEnabled = false
             isShrinkResources = false
         }
