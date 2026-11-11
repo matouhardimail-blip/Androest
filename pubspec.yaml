@@ -4,7 +4,7 @@ publish_to: "none"
 version: 1.0.0+7
 
 environment:
-  sdk: ">=3.5.0 <4.0.0" # تم تعديل هذا السطر ليتوافق مع إصدار Dart الحالي
+  sdk: ">=3.5.0 <4.0.0"
   flutter: ">=3.24.0"
 
 dependencies:
@@ -27,7 +27,7 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^6.0.0
+  flutter_lints: ^4.0.0 # تم تعديل هذا السطر ليتوافق مع إصدار Dart
 
 flutter:
   uses-material-design: true
