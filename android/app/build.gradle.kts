@@ -14,6 +14,8 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
+        // تفعيل هذه الميزة لحل مشكلة مكتبة الإشعارات
+        isCoreLibraryDesugaringEnabled = true
     }
 
     defaultConfig {
@@ -24,7 +26,6 @@ android {
         versionName = flutter.versionName
     }
 
-    // قراءة إعدادات التوقيع من متغيرات البيئة
     signingConfigs {
         create("release") {
             val keystorePath = System.getenv("KEYSTORE_PATH")
@@ -39,11 +40,10 @@ android {
 
     buildTypes {
         release {
-            // استخدام مفتاح التوقيع الثابت إذا كان متاحاً
             signingConfig = if (System.getenv("KEYSTORE_PATH") != null) {
                 signingConfigs.getByName("release")
             } else {
-                signingConfigs.getByName("debug") // احتياطي للتجربة المحلية
+                signingConfigs.getByName("debug")
             }
             isMinifyEnabled = false
             isShrinkResources = false
@@ -59,4 +59,9 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+// إضافة المكتبة المسؤولة عن الـ Desugaring
+dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
 }
