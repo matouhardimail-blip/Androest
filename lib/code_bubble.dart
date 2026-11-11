@@ -3,8 +3,7 @@ import 'package:flutter/services.dart';
 
 class CodeBubble extends StatelessWidget {
   final String code;
-
-  const CodeBubble({Key? key, required this.code}) : super(key: key);
+  const CodeBubble({super.key, required this.code});
 
   @override
   Widget build(BuildContext context) {
@@ -27,19 +26,13 @@ class CodeBubble extends StatelessWidget {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  "Code",
-                  style: TextStyle(color: Colors.grey, fontSize: 12),
-                ),
+                const Text("Code", style: TextStyle(color: Colors.grey, fontSize: 12)),
                 IconButton(
                   icon: const Icon(Icons.copy, color: Colors.white, size: 18),
                   onPressed: () {
                     Clipboard.setData(ClipboardData(text: code));
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text("تم نسخ الكود بنجاح"),
-                        duration: Duration(seconds: 1),
-                      ),
+                      const SnackBar(content: Text("تم نسخ الكود"), duration: Duration(seconds: 1)),
                     );
                   },
                 ),
@@ -52,11 +45,7 @@ class CodeBubble extends StatelessWidget {
               scrollDirection: Axis.horizontal,
               child: Text(
                 code,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontFamily: 'monospace',
-                  fontSize: 14,
-                ),
+                style: const TextStyle(color: Colors.white, fontFamily: 'monospace', fontSize: 14),
               ),
             ),
           ),
