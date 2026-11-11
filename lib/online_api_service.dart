@@ -14,7 +14,6 @@ class OnlineApiService {
   }) async* {
     try {
       if (provider.toLowerCase() == "anthropic") {
-        // صيغة Anthropic (Claude)
         final response = await _dio.post(
           '$baseUrl/v1/messages',
           options: Options(
@@ -49,7 +48,7 @@ class OnlineApiService {
           }
         }
       } else {
-        // صيغة OpenAI (متوافقة مع Groq, OpenRouter, DeepSeek)
+        // OpenAI / Groq / OpenRouter
         final response = await _dio.post(
           '$baseUrl/chat/completions',
           options: Options(
@@ -83,19 +82,20 @@ class OnlineApiService {
         }
       }
     } catch (e) {
-      // --- هذا الجزء هو ما سيُظهر لنا الخطأ الحقيقي ---
+      // التقاط خطأ Dio وإظهار السبب الحقيقي
       if (e is DioException) {
         String errorMessage = "خطأ غير معروف";
         if (e.response != null && e.response!.data != null) {
+          // قراءة رسالة الخطأ من الخادم (مثل Groq أو OpenAI)
           if (e.response!.data is String) {
             errorMessage = e.response!.data;
           } else {
             errorMessage = e.response!.data.toString();
           }
         }
-        yield "خطأ من الخادم (${e.response?.statusCode}):\n$errorMessage";
+        yield "\n\n❌ خطأ من الخادم (${e.response?.statusCode}):\n$errorMessage";
       } else {
-        yield "خطأ في الاتصال: $e";
+        yield "\n\n❌ خطأ في الاتصال: $e";
       }
     }
   }

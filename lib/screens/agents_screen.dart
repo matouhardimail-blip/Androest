@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../theme.dart';
 import '../models/agent_model.dart';
+import 'chat_screen.dart'; // استيراد شاشة الدردشة
 
 class AgentsScreen extends StatefulWidget {
   const AgentsScreen({super.key});
@@ -13,16 +14,13 @@ class _AgentsScreenState extends State<AgentsScreen> {
   String _selectedFilter = 'All';
 
   final List<AgentModel> agents = [
-    AgentModel(id: '1', name: 'ChatGPT', description: 'Powerful assistant for everything', provider: 'OpenAI', model: 'GPT-4o', icon: Icons.chat, color: Colors.green, category: 'General', isConnected: true, capabilities: ['Text', 'Vision']),
-    AgentModel(id: '2', name: 'Claude', description: 'Thoughtful & helpful AI', provider: 'Anthropic', model: 'Sonnet 3.5', icon: Icons.psychology, color: Colors.orange, category: 'General', isConnected: false, capabilities: ['Text', 'Code']),
-    AgentModel(id: '3', name: 'DeepSeek', description: 'Advanced reasoning AI', provider: 'DeepSeek', model: 'DeepSeek-V3', icon: Icons.code, color: Colors.blue, category: 'Coding', isConnected: false, capabilities: ['Text', 'Code']),
-    AgentModel(id: '4', name: 'Gemini', description: 'Google multimodal AI', provider: 'Google', model: '2.5 Pro', icon: Icons.auto_awesome, color: Colors.purple, category: 'General', isConnected: true, capabilities: ['Text', 'Vision']),
-    AgentModel(id: '5', name: 'Perplexity', description: 'Real-time search & analysis', provider: 'Perplexity', model: 'Sonar', icon: Icons.search, color: Colors.teal, category: 'Research', isConnected: false, capabilities: ['Search']),
+    AgentModel(id: '1', name: 'ChatGPT', description: 'Powerful assistant', provider: 'OpenAI', model: 'GPT-4o', icon: Icons.chat, color: Colors.green, category: 'General', isConnected: true, capabilities: ['Text']),
+    AgentModel(id: '2', name: 'Claude', description: 'Thoughtful AI', provider: 'Anthropic', model: 'Sonnet 3.5', icon: Icons.psychology, color: Colors.orange, category: 'General', isConnected: true, capabilities: ['Text']),
+    AgentModel(id: '3', name: 'DeepSeek', description: 'Advanced reasoning', provider: 'DeepSeek', model: 'DeepSeek-V3', icon: Icons.code, color: Colors.blue, category: 'Coding', isConnected: true, capabilities: ['Text']),
   ];
 
   @override
   Widget build(BuildContext context) {
-    // فلترة الوكلاء
     List<AgentModel> filteredAgents = _selectedFilter == 'All' 
         ? agents 
         : agents.where((a) => a.category == _selectedFilter).toList();
@@ -48,11 +46,7 @@ class _AgentsScreenState extends State<AgentsScreen> {
                 children: ['All', 'General', 'Coding', 'Research'].map((filter) {
                   bool isSelected = _selectedFilter == filter;
                   return GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        _selectedFilter = filter;
-                      });
-                    },
+                    onTap: () => setState(() => _selectedFilter = filter),
                     child: Container(
                       margin: const EdgeInsets.only(right: 10),
                       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
@@ -110,26 +104,22 @@ class _AgentsScreenState extends State<AgentsScreen> {
                               ),
                               Text(agent.description, style: const TextStyle(color: AppColors.textSecondary, fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
                               const SizedBox(height: 8),
-                              Row(
-                                children: [
-                                  const Icon(Icons.star, color: Colors.amber, size: 14),
-                                  const SizedBox(width: 4),
-                                  const Text("4.8", style: TextStyle(color: Colors.white70, fontSize: 12)),
-                                  const SizedBox(width: 10),
-                                  Text(agent.provider, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-                                ],
-                              ),
+                              Text(agent.provider, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
                             ],
                           ),
                         ),
                         ElevatedButton(
                           onPressed: () {
-                            setState(() {
-                              agent.isConnected = !agent.isConnected;
-                            });
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text(agent.isConnected ? "تم الاتصال بـ ${agent.name}" : "تم قطع الاتصال عن ${agent.name}")),
-                            );
+                            if (!agent.isConnected) {
+                              setState(() => agent.isConnected = true);
+                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("تم الاتصال بـ ${agent.name}")));
+                            } else {
+                              // الانتقال لشاشة الدردشة
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (context) => ChatScreen(agent: agent)),
+                              );
+                            }
                           },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: agent.isConnected ? AppColors.success.withOpacity(0.2) : AppColors.primary,
