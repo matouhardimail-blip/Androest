@@ -8,13 +8,12 @@ plugins {
 
 android {
     namespace = "com.agentphone.agentphone"
-    compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    compileSdk = 35 // <--- تم التحديث إلى 35
+    ndkVersion = "26.1.10909125" // <--- تم التحديث إلى الإصدار المطلوب
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
-        // تفعيل هذه الميزة لحل مشكلة مكتبة الإشعارات
         isCoreLibraryDesugaringEnabled = true
     }
 
@@ -61,7 +60,6 @@ flutter {
     source = "../.."
 }
 
-// إضافة المكتبة المسؤولة عن الـ Desugaring
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
 }

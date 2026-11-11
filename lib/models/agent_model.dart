@@ -4,9 +4,9 @@ class AgentModel {
   final String id;
   final String name;
   final String description;
-  final String providerId; // معرف مزود الخدمة المرتبط به
-  final String modelName;  // اسم الموديل للعرض فقط
-  final String systemPrompt; // شخصية الوكيل
+  final String providerId;
+  final String modelName;
+  final String systemPrompt;
   final IconData icon;
   final Color color;
   final bool isConnected;
@@ -35,15 +35,28 @@ class AgentModel {
     'isConnected': isConnected,
   };
 
-  factory AgentModel.fromJson(Map<String, dynamic> json) => AgentModel(
-    id: json['id'],
-    name: json['name'],
-    description: json['description'],
-    providerId: json['providerId'],
-    modelName: json['modelName'],
-    systemPrompt: json['systemPrompt'],
-    icon: IconData(json['iconCode'], fontFamily: 'MaterialIcons'),
-    color: Color(json['colorValue']),
-    isConnected: json['isConnected'] ?? true,
-  );
+  factory AgentModel.fromJson(Map<String, dynamic> json) {
+    // حل مشكلة الأيقونات المتغيرة (Dynamic IconData)
+    IconData safeIcon = Icons.smart_toy; // الافتراضي
+    int? code = json['iconCode'];
+    if (code == Icons.chat.codePoint) {
+      safeIcon = Icons.chat;
+    } else if (code == Icons.psychology.codePoint) {
+      safeIcon = Icons.psychology;
+    } else if (code == Icons.code.codePoint) {
+      safeIcon = Icons.code;
+    }
+
+    return AgentModel(
+      id: json['id'],
+      name: json['name'],
+      description: json['description'],
+      providerId: json['providerId'],
+      modelName: json['modelName'],
+      systemPrompt: json['systemPrompt'],
+      icon: safeIcon,
+      color: Color(json['colorValue']),
+      isConnected: json['isConnected'] ?? true,
+    );
+  }
 }
