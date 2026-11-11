@@ -245,7 +245,6 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  // دالة التنسيق بين أي وكيلين يختارهما المستخدم
   void _showCoordinationDialog() {
     if (_cloudProviders.length < 2) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("تحتاج إلى إضافة وكيلين على الأقل من الإعدادات.")));
@@ -349,7 +348,6 @@ class _ChatScreenState extends State<ChatScreen> {
     _saveCurrentSession();
   }
 
-  // تشغيل الموديل المحلي حصرياً عبر هذا الزر
   void _runLocalAgent() async {
     if (!_isLocalReady) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("الموديل المحلي غير محمل.")));
@@ -382,7 +380,6 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  // زر الإرسال العادي (يستخدم السحابة إن وجدت)
   void _sendMessage() async {
     if (_controller.text.isEmpty || _currentSession == null) return;
     String userText = _controller.text;
@@ -452,6 +449,21 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // بناء قائمة المحادثات بطريقة آمنة
+    List<Widget> sessionTiles = [];
+    for (var s in _sessions) {
+      sessionTiles.add(
+        ListTile(
+          title: Text(s.title),
+          selected: s.id == _currentSession?.id,
+          onTap: () { 
+            setState(() => _currentSession = s); 
+            Navigator.pop(context); 
+          },
+        )
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: Text(_currentSession?.title ?? 'المحادثات'),
@@ -489,4 +501,55 @@ class _ChatScreenState extends State<ChatScreen> {
               }
             ),
             const Divider(),
-            ..._sessions.map((s)
+            ...sessionTiles, // استخدام القائمة التي بنيناها بأمان
+          ],
+        ),
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: ListView.builder(
+              padding: const EdgeInsets.all(12),
+              itemCount: _currentSession?.messages.length ?? 0,
+              itemBuilder: (context, index) {
+                final msg = _currentSession!.messages[index];
+                return _buildMessageBubble(msg.text, msg.role == 'user');
+              },
+            ),
+          ),
+          if (_isLoading) const Padding(padding: EdgeInsets.all(8.0), child: LinearProgressIndicator()),
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _controller,
+                    enabled: !_isLoading,
+                    decoration: const InputDecoration(hintText: "اكتب رسالتك هنا...", border: OutlineInputBorder()),
+                  ),
+                ),
+                IconButton(icon: const Icon(Icons.send, color: Colors.teal), onPressed: _isLoading ? null : _sendMessage),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMessageBubble(String text, bool isUser) {
+    return Align(
+      alignment: isUser ? Alignment.centerLeft : Alignment.centerRight,
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isUser ? Colors.teal.shade100 : Colors.grey.shade200,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: isUser ? Text(text) : MarkdownBody(data: text, selectable: true, builders: {'pre': CodeElementBuilder()}),
+      ),
+    );
+  }
+}
