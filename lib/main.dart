@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'theme.dart';
+import 'notification_service.dart';
 import 'screens/home_screen.dart';
 import 'screens/agents_screen.dart';
 import 'screens/create_screen.dart';
 import 'screens/workflows_screen.dart';
 import 'screens/profile_screen.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await NotificationService.init(); // تهيئة الإشعارات
   runApp(const MyApp());
 }
 
@@ -57,7 +60,7 @@ class _MainNavigationState extends State<MainNavigation> {
         children: screens,
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => _changeTab(2), // الانتقال لشاشة الإنشاء
+        onPressed: () => _changeTab(2),
         backgroundColor: AppColors.primary,
         elevation: 4,
         shape: const CircleBorder(),
