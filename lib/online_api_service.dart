@@ -49,7 +49,7 @@ class OnlineApiService {
           }
         }
       } else {
-        // صيغة OpenAI (متوافقة مع Groq, OpenRouter, DeepSeek وغيرها)
+        // صيغة OpenAI (متوافقة مع Groq, OpenRouter, DeepSeek)
         final response = await _dio.post(
           '$baseUrl/chat/completions',
           options: Options(
@@ -83,7 +83,20 @@ class OnlineApiService {
         }
       }
     } catch (e) {
-      yield "خطأ في الاتصال بـ $provider: $e";
+      // --- هذا الجزء هو ما سيُظهر لنا الخطأ الحقيقي ---
+      if (e is DioException) {
+        String errorMessage = "خطأ غير معروف";
+        if (e.response != null && e.response!.data != null) {
+          if (e.response!.data is String) {
+            errorMessage = e.response!.data;
+          } else {
+            errorMessage = e.response!.data.toString();
+          }
+        }
+        yield "خطأ من الخادم (${e.response?.statusCode}):\n$errorMessage";
+      } else {
+        yield "خطأ في الاتصال: $e";
+      }
     }
   }
 }
