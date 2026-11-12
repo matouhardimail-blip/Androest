@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:dio/dio.dart';
+import 'package:intl/intl.dart'; // نحتاج هذه المكتبة للتنسيق (تأكد من وجودها في pubspec.yaml)
 import 'web_search.dart';
 
 class OnlineApiService {
@@ -37,15 +38,20 @@ class OnlineApiService {
         }
       ];
 
-      // حقن تعليمات صارمة إذا كان البحث مفعلاً
+      // جلب تاريخ اليوم الحقيقي من هاتف المستخدم
+      String currentDate = DateFormat('yyyy-MM-dd').format(DateTime.now());
+
+      // حقن تعليمات صارمة جداً
       String finalSystemPrompt = systemPrompt;
       if (useTools) {
         finalSystemPrompt += """
 
-\n\n[تعليمات هامة جداً]:
-أنت وكيل ذكي متصل بالإنترنت. يحظر عليك تماماً كتابة "لا يمكنني البحث" أو "بحثي مقيد".
-إذا سألك المستخدم عن أخبار، طقس، أو أي معلومات حديثة، يجب عليك فوراً استخدام أداة (web_search) دون تردد.
-لا تجب من معرفتك الداخلية، بل ابحث أولاً.
+\n\n[معلومات هامة جداً لك]:
+التاريخ اليوم هو: $currentDate. (أنت تعيش في هذا التاريخ، وتجاهل أي تاريخ آخر في ذاكرتك).
+أنت وكيل ذكي متصل بالإنترنت ولديك أداة بحث.
+يحظر عليك تماماً كتابة "لا يمكنني البحث" أو "تاريخ معرفتي قديم" أو "أنا لست متصلاً".
+إذا سألك المستخدم عن أخبار، طقس، أو أي شيء حديث، يجب عليك فوراً استخدام أداة (web_search).
+بعد أن تبحث، يجب أن تجيب المستخدم بناءً على النتائج. لا تعتذر أبداً.
 """;
       }
 
@@ -73,7 +79,8 @@ class OnlineApiService {
             'model': modelName,
             'messages': messages,
             if (useTools) 'tools': tools,
-            if (useTools) 'tool_choice': 'auto', // يترك للموديل القرار، لكن التعليمات أعلاه تجبره
+            if (useTools) 'tool_choice': 'auto',
+            'temperature': 0.1, // تقليل الإبداعية لزيادة الالتزام بالتعليمات
             'stream': true,
           }),
         );
@@ -112,7 +119,7 @@ class OnlineApiService {
           }
         }
 
-        // إذا طلب أداة بحث
+        // تنفيذ البحث
         if (isToolCall && toolCallName == "web_search" && toolCallCount < 1) {
           keepRunning = true;
           toolCallCount++;
@@ -146,13 +153,13 @@ class OnlineApiService {
               'role': 'tool',
               'tool_call_id': 'call_123',
               'name': 'web_search',
-              'content': searchResults.isEmpty ? "لم يتم العثور على نتائج." : searchResults,
+              'content': searchResults,
             });
 
-            // نطلب منه الإجابة الآن
+            // تعليمات ما بعد البحث (إجباره على الإجابة)
             messages.add({
               'role': 'system',
-              'content': "لقد نفذت البحث بنجاح. الآن أجب على المستخدم بناءً على النتائج. لا تعتذر."
+              'content': "هذه نتائج البحث التي طلبتها. الآن أجب على المستخدم فوراً باللغة العربية. لا تعتذر ولا ترفض، استخدم النتائج."
             });
           }
         }
@@ -168,7 +175,7 @@ class OnlineApiService {
     }
   }
 
-  // ... (بقية دالة testConnection كما هي)
+  // دالة اختبار الاتصال
   Future<String?> testConnection({
     required String provider,
     required String apiKey,
