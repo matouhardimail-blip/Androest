@@ -8,7 +8,6 @@ import '../models/agent_model.dart';
 import '../cloud_provider.dart';
 import '../online_api_service.dart';
 import '../notification_service.dart';
-import '../web_search.dart'; // استدعاء أداة البحث
 
 class ChatScreen extends StatefulWidget {
   final AgentModel agent;
@@ -22,7 +21,6 @@ class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final OnlineApiService _api = OnlineApiService();
-  final WebSearch _webSearch = WebSearch();
   
   List<Map<String, String>> _messages = [];
   bool _isLoading = false;
@@ -30,7 +28,6 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _attachedFileContent;
   StreamSubscription? _streamSubscription;
 
-  // متغيرات الإعدادات الجديدة
   bool _isDeepAnalysisEnabled = false;
   bool _isWebSearchEnabled = false;
 
@@ -59,7 +56,7 @@ class _ChatScreenState extends State<ChatScreen> {
       final XFile? file = await openFile(acceptedTypeGroups: [typeGroup]);
       
       if (file != null) {
-        String content = await File(file.path).readAsString(); // ملاحظة: لقراءة PDF نحتاج مكتبة إضافية، هنا يقرأ النصوص فقط
+        String content = await File(file.path).readAsString(); 
         setState(() {
           _attachedFileContent = content;
         });
@@ -84,7 +81,6 @@ class _ChatScreenState extends State<ChatScreen> {
     String userText = _controller.text.trim();
     String finalPrompt = userText;
 
-    // 1. التعامل مع الملف المرفق
     if (_attachedFileContent != null) {
       finalPrompt = "محتوى الملف المرفق:\n$_attachedFileContent\n\nطلب المستخدم:\n$userText";
     }
@@ -102,25 +98,9 @@ class _ChatScreenState extends State<ChatScreen> {
     String currentResponse = "";
     int aiMessageIndex = _messages.length - 1;
 
-    // 2. تنفيذ البحث في الويب إذا كان مفعلاً
-    if (_isWebSearchEnabled) {
-      setState(() {
-        _messages[aiMessageIndex]['text'] = "🔍 جاري البحث في الإنترنت...\n";
-      });
-      String searchResults = await _webSearch.search(userText);
-      finalPrompt = "نتائج البحث في الإنترنت:\n$searchResults\n\nسؤال المستخدم:\n$userText\n\nأجب بناءً على هذه النتائج.";
-    }
-
-    // 3. إضافة تعليمات التحليل العميق
     String finalSystemPrompt = widget.agent.systemPrompt;
     if (_isDeepAnalysisEnabled) {
       finalSystemPrompt += "\n\nقم بتحليل السؤال بعمق، وفكر خطوة بخطوة قبل إعطاء الإجابة النهائية.";
-    }
-
-    if (_isWebSearchEnabled) {
-      setState(() {
-        _messages[aiMessageIndex]['text'] = ""; // تفريغ رسالة البحث لبدء كتابة الرد
-      });
     }
 
     _streamSubscription = _api.generateStream(
@@ -130,6 +110,7 @@ class _ChatScreenState extends State<ChatScreen> {
       modelName: _providerConfig!.modelName,
       systemPrompt: finalSystemPrompt,
       userPrompt: finalPrompt,
+      useTools: _isWebSearchEnabled, // نمرر حالة البحث للمحرك
     ).listen(
       (chunk) {
         currentResponse += chunk;
@@ -186,7 +167,6 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
-  // نافذة الإعدادات المنبثقة (Deep Analysis & Web Search)
   void _showSettingsDialog() {
     showModalBottomSheet(
       context: context,
@@ -225,7 +205,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   ),
                   SwitchListTile(
                     title: const Text("البحث في الويب (Web Search)", style: TextStyle(color: Colors.white)),
-                    subtitle: const Text("جلب معلومات حديثة من الإنترنت", style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                    subtitle: const Text("السماح للموديل باستخدام محرك البحث", style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
                     value: _isWebSearchEnabled,
                     activeColor: AppColors.primary,
                     onChanged: (val) {
@@ -296,7 +276,7 @@ class _ChatScreenState extends State<ChatScreen> {
         children: [
           Expanded(
             child: _messages.isEmpty 
-              ? _buildEmptyState() // شاشة الاقتراحات إذا كانت المحادثة فارغة
+              ? _buildEmptyState() 
               : ListView.builder(
                   controller: _scrollController,
                   padding: const EdgeInsets.all(16),
@@ -330,7 +310,6 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  // شاشة البداية (الاقتراحات)
   Widget _buildEmptyState() {
     return Center(
       child: Padding(
@@ -413,13 +392,18 @@ class _ChatScreenState extends State<ChatScreen> {
               styleSheet: MarkdownStyleSheet(
                 p: const TextStyle(color: Colors.white, fontSize: 16),
                 code: const TextStyle(backgroundColor: Colors.black45, color: Colors.greenAccent),
+                blockquoteDecoration: BoxDecoration(
+                  color: AppColors.background,
+                  borderRadius: BorderRadius.circular(8),
+                  border: const Border(left: BorderSide(color: AppColors.primary, width: 4)),
+                ),
+                blockquotePadding: const EdgeInsets.all(10),
               ),
             ),
       ),
     );
   }
 
-  // حقل الإدخال الجديد (مطابق للصورة)
   Widget _buildInputArea() {
     return Container(
       margin: const EdgeInsets.all(12),
@@ -432,7 +416,6 @@ class _ChatScreenState extends State<ChatScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // الجزء العلوي: حقل النص
           TextField(
             controller: _controller,
             style: const TextStyle(color: Colors.white, fontSize: 16),
@@ -444,18 +427,13 @@ class _ChatScreenState extends State<ChatScreen> {
               contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
             ),
           ),
-          
-          // الجزء السفلي: الأزرار والأدوات
           Row(
             children: [
-              // زر رفع الملف
               IconButton(
                 icon: const Icon(Icons.attach_file, color: AppColors.textSecondary),
                 onPressed: _pickFile,
                 tooltip: "رفع ملف",
               ),
-              
-              // اسم الوكيل (بدلاً من قائمة اختيار الموديل في الصورة)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
@@ -471,25 +449,18 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
               ),
               const SizedBox(width: 8),
-
-              // زر الإعدادات المتقدمة
               IconButton(
                 icon: const Icon(Icons.tune, color: AppColors.textSecondary),
                 onPressed: _showSettingsDialog,
                 tooltip: "إعدادات متقدمة",
               ),
-
               const Spacer(),
-
-              // زر المايك (تحويل الصوت لنص - قيد التطوير)
               IconButton(
                 icon: const Icon(Icons.mic, color: AppColors.textSecondary),
                 onPressed: () {
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("ميزة الإدخال الصوتي قيد التطوير...")));
                 },
               ),
-
-              // زر الإرسال / الإيقاف
               Container(
                 decoration: const BoxDecoration(
                   color: AppColors.primary,
