@@ -20,7 +20,7 @@ class _ProviderManagerScreenState extends State<ProviderManagerScreen> {
       'name': 'Groq',
       'type': 'openai',
       'url': 'https://api.groq.com/openai/v1',
-      'model': 'llama-3.1-8b-instant', // تم تحديث اسم الموديل ليكون متوافقاً
+      'model': 'llama-3.3-70b-versatile',
       'desc': 'سريع جداً ومجاني (موصى به)'
     },
     {
@@ -36,6 +36,13 @@ class _ProviderManagerScreenState extends State<ProviderManagerScreen> {
       'url': 'https://generativelanguage.googleapis.com/v1beta/openai/',
       'model': 'gemini-1.5-flash',
       'desc': 'من جوجل، يدعم العربية بقوة'
+    },
+    {
+      'name': 'الموديل المحلي (Local)',
+      'type': 'local',
+      'url': 'local',
+      'model': 'agentic_arabic_2.6b.gguf',
+      'desc': 'يعمل بدون إنترنت (يجب تحميله أولاً)'
     }
   ];
 
@@ -66,7 +73,10 @@ class _ProviderManagerScreenState extends State<ProviderManagerScreen> {
               ),
               const Divider(color: Colors.white12),
               ..._defaultProviders.map((p) => ListTile(
-                leading: const Icon(Icons.bolt, color: AppColors.primary),
+                leading: Icon(
+                  p['type'] == 'local' ? Icons.offline_bolt : Icons.bolt, 
+                  color: p['type'] == 'local' ? AppColors.success : AppColors.primary
+                ),
                 title: Text(p['name']!, style: const TextStyle(color: Colors.white)),
                 subtitle: Text(p['desc']!, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
                 onTap: () {
@@ -102,15 +112,18 @@ class _ProviderManagerScreenState extends State<ProviderManagerScreen> {
     String? presetUrl,
     String? presetModel,
   }) {
+    bool isCustom = presetName == null;
+    bool isLocal = presetType == 'local';
+    
     String name = presetName ?? "";
     String type = presetType ?? "openai";
-    String key = "";
+    String key = isLocal ? "local" : "";
     String baseUrl = presetUrl ?? "https://api.openai.com/v1";
     String model = presetModel ?? "gpt-4o";
     List<AgentCapability> selectedCaps = [AgentCapability.textGeneration];
 
     bool isTesting = false;
-    bool testPassed = false;
+    bool testPassed = isLocal; // إذا كان محلياً، نعتبره جاهزاً
 
     showDialog(
       context: context,
@@ -119,10 +132,15 @@ class _ProviderManagerScreenState extends State<ProviderManagerScreen> {
           builder: (context, setStateDialog) {
             
             Future<void> testConnection() async {
-              if (key.isEmpty) {
+              if (!isLocal && key.isEmpty) {
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("يرجى إدخال مفتاح API أولاً")));
                 return;
               }
+              if (isLocal) {
+                setStateDialog(() => testPassed = true);
+                return;
+              }
+
               setStateDialog(() => isTesting = true);
               
               String? error = await _api.testConnection(
@@ -152,7 +170,7 @@ class _ProviderManagerScreenState extends State<ProviderManagerScreen> {
               backgroundColor: AppColors.cardBackground,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
               title: Text(
-                presetName == null ? "إضافة مزود مخصص" : "ربط مزود: $presetName",
+                isCustom ? "إضافة مزود مخصص" : "ربط مزود: $presetName",
                 style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
               ),
               content: SizedBox(
@@ -160,7 +178,6 @@ class _ProviderManagerScreenState extends State<ProviderManagerScreen> {
                 child: ListView(
                   shrinkWrap: true,
                   children: [
-                    // جعل جميع الحقول قابلة للتعديل حتى لو كان مزوداً افتراضياً
                     TextField(
                       style: const TextStyle(color: Colors.white),
                       decoration: const InputDecoration(
@@ -169,83 +186,88 @@ class _ProviderManagerScreenState extends State<ProviderManagerScreen> {
                         enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
                       ),
                       controller: TextEditingController(text: name),
-                      onChanged: (v) { name = v; setStateDialog(() => testPassed = false); },
+                      onChanged: (v) { name = v; setStateDialog(() => testPassed = isLocal); },
                     ),
                     const SizedBox(height: 10),
-                    DropdownButtonFormField<String>(
-                      value: type,
-                      dropdownColor: AppColors.cardBackground,
-                      items: const [
-                        DropdownMenuItem(value: "openai", child: Text("OpenAI / متوافق", style: TextStyle(color: Colors.white))),
-                        DropdownMenuItem(value: "anthropic", child: Text("Anthropic (Claude)", style: TextStyle(color: Colors.white))),
-                      ],
-                      onChanged: (v) { setStateDialog(() { type = v!; testPassed = false; }); },
-                      decoration: const InputDecoration(
-                        labelText: "نوع المزود",
-                        labelStyle: TextStyle(color: AppColors.textSecondary),
-                        enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      style: const TextStyle(color: Colors.white),
-                      decoration: const InputDecoration(
-                        labelText: "Base URL",
-                        labelStyle: TextStyle(color: AppColors.textSecondary),
-                        enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
-                      ),
-                      controller: TextEditingController(text: baseUrl),
-                      onChanged: (v) { baseUrl = v; setStateDialog(() => testPassed = false); },
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      style: const TextStyle(color: Colors.white),
-                      decoration: const InputDecoration(
-                        labelText: "Model Name",
-                        labelStyle: TextStyle(color: AppColors.textSecondary),
-                        enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
-                      ),
-                      controller: TextEditingController(text: model),
-                      onChanged: (v) { model = v; setStateDialog(() => testPassed = false); },
-                    ),
-                    const SizedBox(height: 10),
-
-                    TextField(
-                      style: const TextStyle(color: Colors.white),
-                      obscureText: true,
-                      controller: TextEditingController(text: key),
-                      decoration: InputDecoration(
-                        labelText: "API Key",
-                        labelStyle: const TextStyle(color: AppColors.textSecondary),
-                        enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
-                        focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: AppColors.primary)),
-                        suffixIcon: testPassed 
-                          ? const Icon(Icons.check_circle, color: AppColors.success) 
-                          : null,
-                      ),
-                      onChanged: (v) { key = v; setStateDialog(() => testPassed = false); },
-                    ),
-                    
-                    const SizedBox(height: 15),
-                    
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: isTesting ? null : testConnection,
-                        icon: isTesting 
-                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary))
-                          : const Icon(Icons.network_check, color: AppColors.primary),
-                        label: Text(
-                          isTesting ? "جاري الفحص..." : "فحص الاتصال (Test)",
-                          style: const TextStyle(color: AppColors.primary),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          side: const BorderSide(color: AppColors.primary),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
+                    if (isCustom) ...[
+                      DropdownButtonFormField<String>(
+                        value: type,
+                        dropdownColor: AppColors.cardBackground,
+                        items: const [
+                          DropdownMenuItem(value: "openai", child: Text("OpenAI / متوافق", style: TextStyle(color: Colors.white))),
+                          DropdownMenuItem(value: "anthropic", child: Text("Anthropic (Claude)", style: TextStyle(color: Colors.white))),
+                          DropdownMenuItem(value: "local", child: Text("Local (بدون إنترنت)", style: TextStyle(color: Colors.white))),
+                        ],
+                        onChanged: (v) { setStateDialog(() { type = v!; isLocal = type == 'local'; testPassed = isLocal; }); },
+                        decoration: const InputDecoration(
+                          labelText: "نوع المزود",
+                          labelStyle: TextStyle(color: AppColors.textSecondary),
+                          enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
                         ),
                       ),
-                    ),
+                      const SizedBox(height: 10),
+                    ],
+                    
+                    if (!isLocal) ...[
+                      TextField(
+                        style: const TextStyle(color: Colors.white),
+                        decoration: const InputDecoration(
+                          labelText: "Base URL",
+                          labelStyle: TextStyle(color: AppColors.textSecondary),
+                          enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                        ),
+                        controller: TextEditingController(text: baseUrl),
+                        onChanged: (v) { baseUrl = v; setStateDialog(() => testPassed = false); },
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        style: const TextStyle(color: Colors.white),
+                        decoration: const InputDecoration(
+                          labelText: "Model Name",
+                          labelStyle: TextStyle(color: AppColors.textSecondary),
+                          enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                        ),
+                        controller: TextEditingController(text: model),
+                        onChanged: (v) { model = v; setStateDialog(() => testPassed = false); },
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        style: const TextStyle(color: Colors.white),
+                        obscureText: true,
+                        controller: TextEditingController(text: key),
+                        decoration: InputDecoration(
+                          labelText: "API Key",
+                          labelStyle: const TextStyle(color: AppColors.textSecondary),
+                          enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                          focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: AppColors.primary)),
+                          suffixIcon: testPassed 
+                            ? const Icon(Icons.check_circle, color: AppColors.success) 
+                            : null,
+                        ),
+                        onChanged: (v) { key = v; setStateDialog(() => testPassed = false); },
+                      ),
+                      const SizedBox(height: 15),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: isTesting ? null : testConnection,
+                          icon: isTesting 
+                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary))
+                            : const Icon(Icons.network_check, color: AppColors.primary),
+                          label: Text(
+                            isTesting ? "جاري الفحص..." : "فحص الاتصال (Test)",
+                            style: const TextStyle(color: AppColors.primary),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: AppColors.primary),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                        ),
+                      ),
+                    ] else ...[
+                      const Text("الموديل المحلي يعمل بدون إنترنت. لا يتطلب رابطاً أو مفتاحاً.", style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+                    ]
                   ],
                 ),
               ),
@@ -256,11 +278,11 @@ class _ProviderManagerScreenState extends State<ProviderManagerScreen> {
                     _providers.add(CloudProviderConfig(
                       id: const Uuid().v4(),
                       name: name,
-                      providerType: type,
+                      providerType: isLocal ? "local" : type,
                       apiKey: key,
                       baseUrl: baseUrl,
-                      modelName: model,
-                      capabilities: [AgentCapability.textGeneration], // يمكنك إضافة واجهة لاختيار القدرات لاحقاً
+                      modelName: isLocal ? "Local Model" : model,
+                      capabilities: [AgentCapability.textGeneration],
                     ));
                     await CloudConfigManager.saveProviders(_providers);
                     _load();
@@ -307,6 +329,10 @@ class _ProviderManagerScreenState extends State<ProviderManagerScreen> {
                   borderRadius: BorderRadius.circular(15),
                 ),
                 child: ListTile(
+                  leading: Icon(
+                    p.providerType == 'local' ? Icons.offline_bolt : Icons.cloud, 
+                    color: p.providerType == 'local' ? AppColors.success : AppColors.primary
+                  ),
                   title: Text(p.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                   subtitle: Text("${p.providerType} - ${p.modelName}", style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
                   trailing: IconButton(
