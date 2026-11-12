@@ -12,7 +12,7 @@ import '../cloud_provider.dart';
 import '../online_api_service.dart';
 import '../notification_service.dart';
 import '../skill_manager.dart';
-import '../rag_service.dart'; // استدعاء خدمة RAG
+import '../rag_service.dart';
 
 class ChatScreen extends StatefulWidget {
   final AgentModel agent;
@@ -28,14 +28,15 @@ class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final OnlineApiService _api = OnlineApiService();
-  final RagService _rag = RagService(); // كائن RAG
+  final RagService _rag = RagService();
   
   late ChatSession _currentSession;
   bool _isLoading = false;
+  bool _isSummarizing = false;
   CloudProviderConfig? _providerConfig;
   
   String? _attachedFileContent;
-  List<String> _attachedFileChunks = []; // لتخزين أجزاء الملف إذا كان كبيراً
+  List<String> _attachedFileChunks = [];
   
   StreamSubscription? _streamSubscription;
 
@@ -94,7 +95,6 @@ class _ChatScreenState extends State<ChatScreen> {
       if (file != null) {
         String content = await File(file.path).readAsString(); 
         
-        // تطبيق RAG: إذا كان الملف كبيراً (أكثر من 3000 حرف)، نقسمه لأجزاء
         if (content.length > 3000) {
           _attachedFileChunks = _rag.splitIntoChunks(content);
         } else {
@@ -123,18 +123,20 @@ class _ChatScreenState extends State<ChatScreen> {
     String userText = _controller.text.trim();
     String finalPrompt = userText;
 
-    // معالجة الملف باستخدام RAG إذا لزم الأمر
     if (_attachedFileContent != null) {
       if (_attachedFileChunks.isNotEmpty) {
-        // الملف كبير: نبحث عن الأجزاء ذات الصلة فقط
         List<String> relevantChunks = _rag.getRelevantChunks(userText, _attachedFileChunks);
         String context = relevantChunks.join('\n\n...\n\n');
         finalPrompt = "إليك الأجزاء ذات الصلة من الملف المرفق:\n\n$context\n\nسؤال المستخدم:\n$userText\n\nأجب بناءً على الأجزاء المرفقة فقط.";
       } else {
-        // الملف صغير: نمرره كاملاً
         finalPrompt = "محتوى الملف المرفق:\n$_attachedFileContent\n\nطلب المستخدم:\n$userText";
       }
     }
+
+    // بناء سجل المحادثة قبل إضافة الرسالة الجديدة
+    List<Map<String, String>> chatHistory = _currentSession.messages
+        .map((m) => {'role': m.role, 'text': m.text})
+        .toList();
 
     setState(() {
       if (_currentSession.messages.isEmpty && userText.isNotEmpty) {
@@ -161,7 +163,7 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     
     if (_isDeepAnalysisEnabled) {
-      finalSystemPrompt += "\n\nقم بتحليل السؤال بعمق، وفكر خطوة بخطوة قبل إعطاء الإجابة النهائية.";
+      finalSystemPrompt += "\n\nقم بتحليل السؤال بعمق، وفكر خطوة بخطوة.";
     }
 
     _streamSubscription = _api.generateStream(
@@ -171,6 +173,7 @@ class _ChatScreenState extends State<ChatScreen> {
       modelName: _providerConfig!.modelName,
       systemPrompt: finalSystemPrompt,
       userPrompt: finalPrompt,
+      chatHistory: chatHistory, // تمرير السجل
       useTools: _isWebSearchEnabled,
     ).listen(
       (chunk) {
@@ -197,6 +200,40 @@ class _ChatScreenState extends State<ChatScreen> {
       },
       cancelOnError: true,
     );
+  }
+
+  // دالة تلخيص المحادثة لتوفير السياق
+  void _summarizeChat() async {
+    if (_currentSession.messages.length < 3) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("المحادثة قصيرة جداً لتلخيصها.")));
+      return;
+    }
+    if (_providerConfig == null) return;
+
+    setState(() => _isSummarizing = true);
+
+    List<Map<String, String>> chatHistory = _currentSession.messages
+        .map((m) => {'role': m.role, 'text': m.text})
+        .toList();
+
+    String summary = await _api.summarizeChat(
+      provider: _providerConfig!.providerType,
+      apiKey: _providerConfig!.apiKey,
+      baseUrl: _providerConfig!.baseUrl,
+      modelName: _providerConfig!.modelName,
+      chatHistory: chatHistory,
+    );
+
+    setState(() {
+      _currentSession.messages.clear();
+      _currentSession.messages.add(ChatMessageData(
+        role: 'ai', 
+        text: "📌 **ملخص المحادثة السابقة:**\n\n$summary\n\n(تم مسح الرسائل القديمة لتوفير مساحة السياق. يمكنك متابعة الحديث من هنا)."
+      ));
+      _isSummarizing = false;
+    });
+    
+    _saveHistory();
   }
 
   void _stopGeneration() {
@@ -293,9 +330,45 @@ class _ChatScreenState extends State<ChatScreen> {
             Text(widget.agent.modelName, style: const TextStyle(fontSize: 12, color: AppColors.success)),
           ],
         ),
+        actions: [
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert, color: Colors.white),
+            onSelected: (value) {
+              if (value == 'summarize') _summarizeChat();
+              if (value == 'clear') {
+                setState(() => _currentSession.messages.clear());
+                _saveHistory();
+              }
+            },
+            itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+              const PopupMenuItem<String>(
+                value: 'summarize',
+                child: Row(
+                  children: [
+                    Icon(Icons.compress, color: AppColors.primary, size: 20),
+                    SizedBox(width: 8),
+                    Text('تلخيص المحادثة (توفير مساحة)', style: TextStyle(color: Colors.white)),
+                  ],
+                ),
+              ),
+              const PopupMenuItem<String>(
+                value: 'clear',
+                child: Row(
+                  children: [
+                    Icon(Icons.delete_outline, color: AppColors.danger, size: 20),
+                    SizedBox(width: 8),
+                    Text('مسح المحادثة', style: TextStyle(color: Colors.white)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
       body: Column(
         children: [
+          if (_isSummarizing) const LinearProgressIndicator(color: AppColors.primary),
+          
           Expanded(
             child: _currentSession.messages.isEmpty 
               ? _buildEmptyState() 
