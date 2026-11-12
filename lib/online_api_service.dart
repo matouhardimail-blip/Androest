@@ -16,6 +16,7 @@ class OnlineApiService {
     required String modelName,
     required String systemPrompt,
     required String userPrompt,
+    required List<Map<String, String>> chatHistory, // <--- إضافة سجل المحادثة
     bool useTools = false,
   }) async* {
     try {
@@ -53,11 +54,11 @@ class OnlineApiService {
           "type": "function",
           "function": {
             "name": "generate_image",
-            "description": "ارسم أو أنشئ صورة بناءً على وصف. استخدم هذه الأداة عندما يطلب المستخدم صورة.",
+            "description": "ارسم أو أنشئ صورة بناءً على وصف.",
             "parameters": {
               "type": "object",
               "properties": {
-                "prompt": {"type": "string", "description": "وصف الصورة بالإنجليزية (مثال: a cat in space, digital art)"}
+                "prompt": {"type": "string", "description": "وصف الصورة بالإنجليزية"}
               },
               "required": ["prompt"]
             }
@@ -74,15 +75,29 @@ class OnlineApiService {
 \n\n[تعليمات هامة جداً]:
 التاريخ اليوم هو: $currentDate.
 أنت وكيل ذكي ولديك أدوات (بحث، كتابة ملفات، توليد صور).
-إذا طلب منك المستخدم رسم صورة، استخدم أداة (generate_image) واكتب الوصف بالإنجليزية.
-لا تكتفِ بكتابة الكود في الدردشة، بل استخدم الأداة ليتم حفظه على جهاز المستخدم.
+إذا طلب منك المستخدم رسم صورة، استخدم أداة (generate_image).
 """;
       }
 
+      // بناء قائمة الرسائل (System + History + Current Prompt)
       List<Map<String, dynamic>> messages = [
         {'role': 'system', 'content': finalSystemPrompt},
-        {'role': 'user', 'content': userPrompt},
       ];
+
+      // إضافة سجل المحادثة (مع تطبيق Sliding Window لتجنب تجاوز الحد)
+      // نأخذ آخر 10 رسائل كحد أقصى للحفاظ على السياق
+      int maxHistoryLength = 10; 
+      int startIndex = chatHistory.length > maxHistoryLength ? chatHistory.length - maxHistoryLength : 0;
+      
+      for (int i = startIndex; i < chatHistory.length; i++) {
+        messages.add({
+          'role': chatHistory[i]['role'], 
+          'content': chatHistory[i]['text']
+        });
+      }
+
+      // إضافة الرسالة الحالية
+      messages.add({'role': 'user', 'content': userPrompt});
 
       bool keepRunning = true;
       int toolCallCount = 0;
@@ -169,11 +184,8 @@ class OnlineApiService {
             else if (toolCallName == "generate_image") {
               String prompt = args['prompt'] ?? "";
               yield "\n\n> 🎨 *جاري رسم الصورة: $prompt...*\n\n";
-              
-              // استخدام خدمة Pollinations المجانية
               String encodedPrompt = Uri.encodeComponent(prompt);
               String imageUrl = 'https://image.pollinations.ai/prompt/$encodedPrompt?width=1024&height=1024&nologo=true';
-              
               toolResult = "تم توليد الصورة بنجاح. رابط الصورة هو: $imageUrl\n\nاعرض الصورة للمستخدم باستخدام صيغة Markdown: ![صورة]($imageUrl)";
             }
           } catch (e) {
@@ -201,7 +213,7 @@ class OnlineApiService {
 
           messages.add({
             'role': 'system',
-            'content': "تم تنفيذ الأداة بنجاح. أكمل الإجابة أو نفذ الخطوة التالية."
+            'content': "تم تنفيذ الأداة بنجاح. أكمل الإجابة."
           });
         }
       }
@@ -216,6 +228,40 @@ class OnlineApiService {
     }
   }
 
+  // دالة جديدة: تلخيص المحادثة
+  Future<String> summarizeChat({
+    required String provider,
+    required String apiKey,
+    required String baseUrl,
+    required String modelName,
+    required List<Map<String, String>> chatHistory,
+  }) async {
+    try {
+      String historyText = chatHistory.map((m) => "${m['role'] == 'user' ? 'المستخدم' : 'المساعد'}: ${m['text']}").join('\n');
+      
+      final response = await _dio.post(
+        '$baseUrl/chat/completions',
+        options: Options(
+          headers: {
+            'Authorization': 'Bearer $apiKey',
+            'Content-Type': 'application/json',
+          },
+        ),
+        data: jsonEncode({
+          'model': modelName,
+          'messages': [
+            {'role': 'system', 'content': 'أنت خبير في تلخيص المحادثات. لخص المحادثة التالية في نقاط مختصرة جداً مع الحفاظ على السياق الأساسي.'},
+            {'role': 'user', 'content': historyText},
+          ],
+        }),
+      );
+      return response.data['choices'][0]['message']['content'];
+    } catch (e) {
+      return "فشل التلخيص: $e";
+    }
+  }
+
+  // دالة اختبار الاتصال
   Future<String?> testConnection({
     required String provider,
     required String apiKey,
