@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import '../theme.dart';
 import 'provider_manager_screen.dart';
+import 'skills_screen.dart'; // استيراد شاشة المهارات
 import '../update_service.dart';
-import '../notification_service.dart'; // استيراد الإشعارات
+import '../notification_service.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -23,29 +24,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     UpdateService updateService = UpdateService();
     String status = await updateService.checkAndUpdate((progress) {
-      setState(() {
-        _progress = progress;
-      });
+      setState(() => _progress = progress);
     });
 
     if (mounted) {
-      setState(() {
-        _isUpdating = false;
-      });
+      setState(() => _isUpdating = false);
 
       if (status == "no_update") {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("أنت تستخدم أحدث نسخة من التطبيق."),
-            backgroundColor: AppColors.success,
-          ),
+          const SnackBar(content: Text("أنت تستخدم أحدث نسخة من التطبيق."), backgroundColor: AppColors.success),
         );
       } else if (status == "error") {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("فشل التحديث أو تم إلغاؤه."),
-            backgroundColor: AppColors.danger,
-          ),
+          const SnackBar(content: Text("فشل التحديث أو تم إلغاؤه."), backgroundColor: AppColors.danger),
         );
       } else if (status == "success") {
          NotificationService.showNotification("تحديث AI HUB", "تم تحميل النسخة الجديدة بنجاح، جاري التثبيت...");
@@ -53,7 +44,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  // ... (باقي كود شاشة Profile كما هو بدون تغيير)
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -62,13 +52,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
           padding: const EdgeInsets.all(16),
           child: Column(
             children: [
-              // ... بطاقة المستخدم
               Container(
                 padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: AppColors.cardBackground, 
-                  borderRadius: BorderRadius.circular(20)
-                ),
+                decoration: BoxDecoration(color: AppColors.cardBackground, borderRadius: BorderRadius.circular(20)),
                 child: Row(
                   children: [
                     const CircleAvatar(
@@ -86,10 +72,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           const SizedBox(height: 10),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: AppColors.primary.withOpacity(0.2), 
-                              borderRadius: BorderRadius.circular(10)
-                            ),
+                            decoration: BoxDecoration(color: AppColors.primary.withOpacity(0.2), borderRadius: BorderRadius.circular(10)),
                             child: const Text("Premium Plan", style: TextStyle(color: AppColors.primary, fontSize: 12)),
                           )
                         ],
@@ -100,16 +83,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               const SizedBox(height: 25),
 
-              // زر التحديث
               GestureDetector(
                 onTap: _isUpdating ? null : _handleUpdate,
                 child: Container(
                   margin: const EdgeInsets.only(bottom: 10),
                   padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: AppColors.cardBackground, 
-                    borderRadius: BorderRadius.circular(15)
-                  ),
+                  decoration: BoxDecoration(color: AppColors.cardBackground, borderRadius: BorderRadius.circular(15)),
                   child: Row(
                     children: [
                       const Icon(Icons.update, color: AppColors.success),
@@ -121,45 +100,43 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             const Text("تحديث التطبيق لأحدث نسخة", style: TextStyle(color: Colors.white, fontSize: 16)),
                             if (_isUpdating) ...[
                               const SizedBox(height: 8),
-                              LinearProgressIndicator(
-                                value: _progress > 0 ? _progress : null, 
-                                color: AppColors.primary,
-                                backgroundColor: AppColors.textSecondary.withOpacity(0.2),
-                              ),
+                              LinearProgressIndicator(value: _progress > 0 ? _progress : null, color: AppColors.primary),
                               const SizedBox(height: 4),
-                              Text(
-                                "${(_progress * 100).toStringAsFixed(1)}%", 
-                                style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)
-                              ),
+                              Text("${(_progress * 100).toStringAsFixed(1)}%", style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
                             ]
                           ],
                         ),
                       ),
-                      if (!_isUpdating)
-                        const Icon(Icons.arrow_forward_ios, size: 16, color: AppColors.textSecondary),
+                      if (!_isUpdating) const Icon(Icons.arrow_forward_ios, size: 16, color: AppColors.textSecondary),
                     ],
                   ),
                 ),
               ),
 
-              // ... باقي الإعدادات
+              // زر المهارات
+              _buildSettingItem(
+                context,
+                Icons.extension, 
+                "إدارة المهارات (Skills)",
+                onTap: () {
+                  Navigator.push(context, MaterialPageRoute(builder: (context) => const SkillsScreen()));
+                }
+              ),
+
               _buildSettingItem(
                 context,
                 Icons.key, 
                 "API Keys & Connections",
                 onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const ProviderManagerScreen()),
-                  );
+                  Navigator.push(context, MaterialPageRoute(builder: (context) => const ProviderManagerScreen()));
                 }
               ),
               _buildSettingItem(
                 context, 
-                Icons.settings, 
-                "App Preferences",
+                Icons.info, 
+                "About AI HUB",
                 onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("قريباً...")));
+                  showAboutDialog(context: context, applicationName: "AI HUB", applicationVersion: "1.0.0");
                 }
               ),
             ],
@@ -174,10 +151,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       onTap: onTap,
       child: Container(
         margin: const EdgeInsets.only(bottom: 10),
-        decoration: BoxDecoration(
-          color: AppColors.cardBackground, 
-          borderRadius: BorderRadius.circular(15)
-        ),
+        decoration: BoxDecoration(color: AppColors.cardBackground, borderRadius: BorderRadius.circular(15)),
         child: ListTile(
           leading: Icon(icon, color: AppColors.textSecondary),
           title: Text(title, style: const TextStyle(color: Colors.white)),
