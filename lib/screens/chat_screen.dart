@@ -45,7 +45,7 @@ class _ChatScreenState extends State<ChatScreen> {
       });
     } catch (e) {
       setState(() {
-        _messages.add({'role': 'ai', 'text': 'خطأ: مزود الخدمة المرتبط بهذا الوكيل غير موجود. قد يكون تم حذفه من الإعدادات.'});
+        _messages.add({'role': 'ai', 'text': 'خطأ: مزود الخدمة المرتبط بهذا الوكيل غير موجود.'});
       });
     }
   }
@@ -73,10 +73,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _sendMessage() async {
     if (_controller.text.trim().isEmpty && _attachedFileContent == null) return;
-    if (_providerConfig == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("لم يتم تكوين API Key.")));
-      return;
-    }
+    if (_providerConfig == null) return;
 
     String userText = _controller.text.trim();
     String finalPrompt = userText;
@@ -110,7 +107,7 @@ class _ChatScreenState extends State<ChatScreen> {
       modelName: _providerConfig!.modelName,
       systemPrompt: finalSystemPrompt,
       userPrompt: finalPrompt,
-      useTools: _isWebSearchEnabled, // نمرر حالة البحث للمحرك
+      useTools: _isWebSearchEnabled,
     ).listen(
       (chunk) {
         currentResponse += chunk;
@@ -140,7 +137,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _streamSubscription?.cancel();
     setState(() => _isLoading = false);
     setState(() {
-      _messages.last['text'] = _messages.last['text']! + "\n\n[تم إيقاف التوليد بواسطة المستخدم]";
+      _messages.last['text'] = _messages.last['text']! + "\n\n[تم إيقاف التوليد]";
     });
   }
 
@@ -195,7 +192,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   const Divider(color: Colors.white24),
                   SwitchListTile(
                     title: const Text("تحليل عميق (Deep Analysis)", style: TextStyle(color: Colors.white)),
-                    subtitle: const Text("جعل الموديل يفكر خطوة بخطوة قبل الرد", style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                    subtitle: const Text("جعل الموديل يفكر خطوة بخطوة", style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
                     value: _isDeepAnalysisEnabled,
                     activeColor: AppColors.primary,
                     onChanged: (val) {
@@ -204,8 +201,8 @@ class _ChatScreenState extends State<ChatScreen> {
                     },
                   ),
                   SwitchListTile(
-                    title: const Text("البحث في الويب (Web Search)", style: TextStyle(color: Colors.white)),
-                    subtitle: const Text("السماح للموديل باستخدام محرك البحث", style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                    title: const Text("تفعيل الأدوات (Tools / MCP)", style: TextStyle(color: Colors.white)),
+                    subtitle: const Text("السماح للموديل بالبحث وحفظ الملفات", style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
                     value: _isWebSearchEnabled,
                     activeColor: AppColors.primary,
                     onChanged: (val) {
@@ -255,16 +252,6 @@ class _ChatScreenState extends State<ChatScreen> {
                     Icon(Icons.delete_outline, color: AppColors.danger, size: 20),
                     SizedBox(width: 8),
                     Text('مسح المحادثة', style: TextStyle(color: Colors.white)),
-                  ],
-                ),
-              ),
-              const PopupMenuItem<String>(
-                value: 'archive',
-                child: Row(
-                  children: [
-                    Icon(Icons.archive_outlined, color: AppColors.primary, size: 20),
-                    SizedBox(width: 8),
-                    Text('أرشفة المحادثة', style: TextStyle(color: Colors.white)),
                   ],
                 ),
               ),
