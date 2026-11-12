@@ -26,7 +26,9 @@ dependencies:
   html: ^0.15.4
   intl: ^0.19.0
   syncfusion_flutter_pdf: ^26.2.14
-  image_picker: ^1.1.2 # <--- أضفنا هذه المكتبة
+  image_picker: ^1.1.2
+  archive: ^3.6.1 # <--- أضفنا هذه المكتبة
+  share_plus: ^9.0.0 # <--- أضفنا هذه المكتبة
 
 dev_dependencies:
   flutter_test:
