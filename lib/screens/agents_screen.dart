@@ -233,7 +233,7 @@ class _AgentsScreenState extends State<AgentsScreen> {
                           },
                           child: Container(
                             margin: const EdgeInsets.only(bottom: 15),
-                            padding: const EdgeInsets.all(15),
+                            padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
                               color: AppColors.cardBackground,
                               borderRadius: BorderRadius.circular(20),
@@ -256,7 +256,7 @@ class _AgentsScreenState extends State<AgentsScreen> {
                                       Text(agent.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
                                       Text(agent.description, style: const TextStyle(color: AppColors.textSecondary, fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
                                       const SizedBox(height: 8),
-                                      Text(agent.modelName, style: const TextStyle(color: AppColors.success, fontSize: 12)),
+                                      Text(agent.modelName, style: const TextStyle(color: AppColors.accentBlue, fontSize: 12)),
                                     ],
                                   ),
                                 ),
@@ -266,20 +266,21 @@ class _AgentsScreenState extends State<AgentsScreen> {
                                   tooltip: "تعديل الوكيل",
                                 ),
                                 const SizedBox(width: 5),
+                                // تحسين شكل زر الفتح
                                 ElevatedButton(
                                   onPressed: () {
-                                    // هنا نفتح الدردشة بدون تمرير محادثة سابقة (محادثة جديدة)
                                     Navigator.push(
                                       context,
                                       MaterialPageRoute(builder: (context) => ChatScreen(agent: agent)),
                                     );
                                   },
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: AppColors.primary.withOpacity(0.2),
-                                    foregroundColor: AppColors.primary,
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                    backgroundColor: AppColors.primary,
+                                    foregroundColor: Colors.white,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                                   ),
-                                  child: const Text("Open"),
+                                  child: const Text("Open", style: TextStyle(fontWeight: FontWeight.bold)),
                                 )
                               ],
                             ),
