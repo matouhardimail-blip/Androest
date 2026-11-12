@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:dio/dio.dart';
 
 class OnlineApiService {
@@ -48,7 +49,6 @@ class OnlineApiService {
           }
         }
       } else {
-        // OpenAI / Groq / OpenRouter
         final response = await _dio.post(
           '$baseUrl/chat/completions',
           options: Options(
@@ -82,12 +82,14 @@ class OnlineApiService {
         }
       }
     } catch (e) {
-      // التقاط خطأ Dio وإظهار السبب الحقيقي
       if (e is DioException) {
         String errorMessage = "خطأ غير معروف";
         if (e.response != null && e.response!.data != null) {
-          // قراءة رسالة الخطأ من الخادم (مثل Groq أو OpenAI)
-          if (e.response!.data is String) {
+          if (e.response!.data is ResponseBody) {
+            final responseBody = e.response!.data as ResponseBody;
+            final bytes = await responseBody.stream.toBytes();
+            errorMessage = utf8.decode(bytes);
+          } else if (e.response!.data is String) {
             errorMessage = e.response!.data;
           } else {
             errorMessage = e.response!.data.toString();
@@ -98,5 +100,67 @@ class OnlineApiService {
         yield "\n\n❌ خطأ في الاتصال: $e";
       }
     }
+  }
+
+  // دالة جديدة لفحص الاتصال قبل الحفظ
+  // ترجع null إذا كان الاتصال ناجحاً، أو نص الخطأ إذا فشل
+  Future<String?> testConnection({
+    required String provider,
+    required String apiKey,
+    required String baseUrl,
+    required String modelName,
+  }) async {
+    try {
+      if (provider.toLowerCase() == "anthropic") {
+        final response = await _dio.post(
+          '$baseUrl/v1/messages',
+          options: Options(
+            headers: {
+              'x-api-key': apiKey,
+              'anthropic-version': '2023-06-01',
+              'content-type': 'application/json',
+            },
+          ),
+          data: jsonEncode({
+            'model': modelName,
+            'max_tokens': 5, // طلب صغير جداً لتسريع الفحص
+            'messages': [{'role': 'user', 'content': 'Hi'}],
+          }),
+        );
+        if (response.statusCode == 200) return null;
+      } else {
+        final response = await _dio.post(
+          '$baseUrl/chat/completions',
+          options: Options(
+            headers: {
+              'Authorization': 'Bearer $apiKey',
+              'Content-Type': 'application/json',
+            },
+          ),
+          data: jsonEncode({
+            'model': modelName,
+            'messages': [{'role': 'user', 'content': 'Hi'}],
+            'max_tokens': 5,
+          }),
+        );
+        if (response.statusCode == 200) return null;
+      }
+    } on DioException catch (e) {
+      String msg = "خطأ غير معروف";
+      if (e.response != null && e.response!.data != null) {
+         if (e.response!.data is Map) {
+            // محاولة استخراج رسالة الخطأ من استجابة JSON
+            msg = e.response!.data['error']?['message'] ?? e.response!.data['message'] ?? e.response!.data.toString();
+         } else {
+            msg = e.response!.data.toString();
+         }
+      } else {
+         msg = e.message ?? e.toString();
+      }
+      return "(${e.response?.statusCode ?? 'Err'}) $msg";
+    } catch (e) {
+      return e.toString();
+    }
+    return "فشل الاتصال غير متوقع";
   }
 }

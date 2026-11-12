@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../theme.dart';
 import '../cloud_provider.dart';
+import '../online_api_service.dart';
 import 'package:uuid/uuid.dart';
 
 class ProviderManagerScreen extends StatefulWidget {
@@ -12,8 +13,8 @@ class ProviderManagerScreen extends StatefulWidget {
 
 class _ProviderManagerScreenState extends State<ProviderManagerScreen> {
   List<CloudProviderConfig> _providers = [];
+  final OnlineApiService _api = OnlineApiService();
 
-  // قائمة المزودين الافتراضيين
   final List<Map<String, String>> _defaultProviders = [
     {
       'name': 'Groq',
@@ -56,7 +57,6 @@ class _ProviderManagerScreenState extends State<ProviderManagerScreen> {
     setState(() => _providers = providers);
   }
 
-  // الخطوة 1: اختيار نوع المزود
   void _showProviderOptions() {
     showModalBottomSheet(
       context: context,
@@ -77,7 +77,7 @@ class _ProviderManagerScreenState extends State<ProviderManagerScreen> {
                 title: Text(p['name']!, style: const TextStyle(color: Colors.white)),
                 subtitle: Text(p['desc']!, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
                 onTap: () {
-                  Navigator.pop(context); // إغلاق النافذة السفلية
+                  Navigator.pop(context);
                   _showAddProviderDialog(
                     presetName: p['name'],
                     presetType: p['type'],
@@ -92,7 +92,7 @@ class _ProviderManagerScreenState extends State<ProviderManagerScreen> {
                 title: const Text("مزود مخصص (Custom)", style: TextStyle(color: Colors.white)),
                 onTap: () {
                   Navigator.pop(context);
-                  _showAddProviderDialog(); // نافذة فارغة
+                  _showAddProviderDialog(); 
                 },
               ),
               const SizedBox(height: 10),
@@ -103,7 +103,6 @@ class _ProviderManagerScreenState extends State<ProviderManagerScreen> {
     );
   }
 
-  // الخطوة 2: إدخال المفتاح (والبيانات إذا كان مخصصاً)
   void _showAddProviderDialog({
     String? presetName,
     String? presetType,
@@ -114,16 +113,52 @@ class _ProviderManagerScreenState extends State<ProviderManagerScreen> {
     
     String name = presetName ?? "";
     String type = presetType ?? "openai";
-    String key = presetName == "Keyless AI" ? "sk-no-key-required" : ""; // إذا كان Keyless نضع مفتاحاً وهمياً
+    String key = presetName == "Keyless AI" ? "sk-no-key-required" : "";
     String baseUrl = presetUrl ?? "https://api.openai.com/v1";
     String model = presetModel ?? "gpt-4o";
     List<AgentCapability> selectedCaps = [AgentCapability.textGeneration];
+
+    // متغيرات حالة الفحص
+    bool isTesting = false;
+    bool testPassed = false;
 
     showDialog(
       context: context,
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setStateDialog) {
+            
+            // دالة الفحص
+            Future<void> testConnection() async {
+              if (key.isEmpty && name != "Keyless AI") {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("يرجى إدخال مفتاح API أولاً")));
+                return;
+              }
+              setStateDialog(() => isTesting = true);
+              
+              String? error = await _api.testConnection(
+                provider: type,
+                apiKey: key,
+                baseUrl: baseUrl,
+                modelName: model,
+              );
+
+              setStateDialog(() {
+                isTesting = false;
+                if (error == null) {
+                  testPassed = true;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("✅ تم الاتصال بنجاح!"), backgroundColor: AppColors.success),
+                  );
+                } else {
+                  testPassed = false;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text("❌ فشل الاتصال: $error"), backgroundColor: AppColors.danger, duration: const Duration(seconds: 5)),
+                  );
+                }
+              });
+            }
+
             return AlertDialog(
               backgroundColor: AppColors.cardBackground,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -144,7 +179,7 @@ class _ProviderManagerScreenState extends State<ProviderManagerScreen> {
                           labelStyle: TextStyle(color: AppColors.textSecondary),
                           enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
                         ),
-                        onChanged: (v) => name = v,
+                        onChanged: (v) { name = v; setStateDialog(() => testPassed = false); },
                       ),
                       const SizedBox(height: 10),
                       DropdownButtonFormField<String>(
@@ -154,7 +189,7 @@ class _ProviderManagerScreenState extends State<ProviderManagerScreen> {
                           DropdownMenuItem(value: "openai", child: Text("OpenAI / متوافق", style: TextStyle(color: Colors.white))),
                           DropdownMenuItem(value: "anthropic", child: Text("Anthropic (Claude)", style: TextStyle(color: Colors.white))),
                         ],
-                        onChanged: (v) => setStateDialog(() => type = v!),
+                        onChanged: (v) { setStateDialog(() { type = v!; testPassed = false; }); },
                         decoration: const InputDecoration(
                           labelText: "نوع المزود",
                           labelStyle: TextStyle(color: AppColors.textSecondary),
@@ -170,7 +205,7 @@ class _ProviderManagerScreenState extends State<ProviderManagerScreen> {
                           enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
                         ),
                         controller: TextEditingController(text: baseUrl),
-                        onChanged: (v) => baseUrl = v,
+                        onChanged: (v) { baseUrl = v; setStateDialog(() => testPassed = false); },
                       ),
                       const SizedBox(height: 10),
                       TextField(
@@ -181,12 +216,11 @@ class _ProviderManagerScreenState extends State<ProviderManagerScreen> {
                           enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
                         ),
                         controller: TextEditingController(text: model),
-                        onChanged: (v) => model = v,
+                        onChanged: (v) { model = v; setStateDialog(() => testPassed = false); },
                       ),
                       const SizedBox(height: 10),
                     ],
 
-                    // حقل الـ API Key يظهر للجميع (عدا Keyless يمكن إخفاؤه أو تعطيله)
                     TextField(
                       style: const TextStyle(color: Colors.white),
                       obscureText: true,
@@ -197,10 +231,35 @@ class _ProviderManagerScreenState extends State<ProviderManagerScreen> {
                         labelStyle: const TextStyle(color: AppColors.textSecondary),
                         enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
                         focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: AppColors.primary)),
+                        suffixIcon: testPassed 
+                          ? const Icon(Icons.check_circle, color: AppColors.success) 
+                          : null,
                       ),
-                      onChanged: (v) => key = v,
+                      onChanged: (v) { key = v; setStateDialog(() => testPassed = false); },
                     ),
                     
+                    const SizedBox(height: 15),
+                    
+                    // زر الفحص
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: isTesting ? null : testConnection,
+                        icon: isTesting 
+                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary))
+                          : const Icon(Icons.network_check, color: AppColors.primary),
+                        label: Text(
+                          isTesting ? "جاري الفحص..." : "فحص الاتصال (Test)",
+                          style: const TextStyle(color: AppColors.primary),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: AppColors.primary),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                      ),
+                    ),
+
                     if (isCustom) ...[
                       const SizedBox(height: 20),
                       const Text("القدرات (Capabilities):", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
@@ -217,6 +276,7 @@ class _ProviderManagerScreenState extends State<ProviderManagerScreen> {
                               setStateDialog(() {
                                 if (selected) selectedCaps.add(cap);
                                 else selectedCaps.remove(cap);
+                                testPassed = false; // إعادة تعيين الفحص عند تغيير القدرات
                               });
                             },
                           );
@@ -229,24 +289,26 @@ class _ProviderManagerScreenState extends State<ProviderManagerScreen> {
               actions: [
                 TextButton(onPressed: () => Navigator.pop(context), child: const Text("إلغاء", style: TextStyle(color: Colors.grey))),
                 ElevatedButton(
-                  onPressed: () async {
-                    if (name.isNotEmpty && (key.isNotEmpty || name == "Keyless AI")) {
-                      _providers.add(CloudProviderConfig(
-                        id: const Uuid().v4(),
-                        name: name,
-                        providerType: type,
-                        apiKey: key,
-                        baseUrl: baseUrl,
-                        modelName: model,
-                        capabilities: isCustom ? selectedCaps : [AgentCapability.textGeneration],
-                      ));
-                      await CloudConfigManager.saveProviders(_providers);
-                      _load();
-                      if (mounted) Navigator.pop(context);
-                    }
-                  },
-                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-                  child: const Text("حفظ", style: TextStyle(color: Colors.white)),
+                  // الزر معطل حتى ينجح الفحص
+                  onPressed: testPassed ? () async {
+                    _providers.add(CloudProviderConfig(
+                      id: const Uuid().v4(),
+                      name: name,
+                      providerType: type,
+                      apiKey: key,
+                      baseUrl: baseUrl,
+                      modelName: model,
+                      capabilities: isCustom ? selectedCaps : [AgentCapability.textGeneration],
+                    ));
+                    await CloudConfigManager.saveProviders(_providers);
+                    _load();
+                    if (mounted) Navigator.pop(context);
+                  } : null,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: testPassed ? AppColors.success : Colors.grey.withOpacity(0.3),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  child: Text("إضافة وحفظ", style: TextStyle(color: testPassed ? Colors.white : Colors.grey)),
                 ),
               ],
             );
@@ -265,7 +327,7 @@ class _ProviderManagerScreenState extends State<ProviderManagerScreen> {
         backgroundColor: AppColors.background,
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _showProviderOptions, // نستدعي دالة اختيار النوع أولاً
+        onPressed: _showProviderOptions,
         backgroundColor: AppColors.primary,
         child: const Icon(Icons.add, color: Colors.white),
       ),
