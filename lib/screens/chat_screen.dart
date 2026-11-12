@@ -10,6 +10,8 @@ import '../models/chat_session.dart';
 import '../chat_history_manager.dart'; 
 import '../cloud_provider.dart';
 import '../online_api_service.dart';
+import '../local_llama_service.dart'; // استدعاء الموديل المحلي
+import '../model_manager.dart'; // لجلب مسار الموديل
 import '../notification_service.dart';
 import '../skill_manager.dart';
 import '../rag_service.dart';
@@ -28,7 +30,9 @@ class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final OnlineApiService _api = OnlineApiService();
+  final LocalLlamaService _localLlama = LocalLlamaService(); // خدمة الموديل المحلي
   final RagService _rag = RagService();
+  final ModelManager _modelManager = ModelManager();
   
   late ChatSession _currentSession;
   bool _isLoading = false;
@@ -72,9 +76,23 @@ class _ChatScreenState extends State<ChatScreen> {
     final providers = await CloudConfigManager.loadProviders();
     _skills = await SkillManager.loadSkills();
     try {
+      final provider = providers.firstWhere((p) => p.id == widget.agent.providerId);
       setState(() {
-        _providerConfig = providers.firstWhere((p) => p.id == widget.agent.providerId);
+        _providerConfig = provider;
       });
+
+      // إذا كان الموديل محلياً، نقوم بتحميله في الذاكرة
+      if (provider.providerType == 'local') {
+        File? modelFile = await _modelManager.getModelFile();
+        if (modelFile != null) {
+          await _localLlama.loadModel(modelFile.path);
+        } else {
+          setState(() {
+            _currentSession.messages.add(ChatMessageData(role: 'ai', text: '⚠️ الموديل المحلي غير محمل. يرجى تحميله من الإعدادات.'));
+          });
+        }
+      }
+
     } catch (e) {
       setState(() {
         _currentSession.messages.add(ChatMessageData(role: 'ai', text: 'خطأ: مزود الخدمة غير موجود.'));
@@ -133,7 +151,6 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     }
 
-    // بناء سجل المحادثة قبل إضافة الرسالة الجديدة
     List<Map<String, String>> chatHistory = _currentSession.messages
         .map((m) => {'role': m.role, 'text': m.text})
         .toList();
@@ -166,47 +183,86 @@ class _ChatScreenState extends State<ChatScreen> {
       finalSystemPrompt += "\n\nقم بتحليل السؤال بعمق، وفكر خطوة بخطوة.";
     }
 
-    _streamSubscription = _api.generateStream(
-      provider: _providerConfig!.providerType,
-      apiKey: _providerConfig!.apiKey,
-      baseUrl: _providerConfig!.baseUrl,
-      modelName: _providerConfig!.modelName,
-      systemPrompt: finalSystemPrompt,
-      userPrompt: finalPrompt,
-      chatHistory: chatHistory, // تمرير السجل
-      useTools: _isWebSearchEnabled,
-    ).listen(
-      (chunk) {
-        currentResponse += chunk;
-        setState(() {
-          _currentSession.messages[aiMessageIndex].text = currentResponse;
-        });
-        _scrollToBottom();
-      },
-      onDone: () {
-        setState(() => _isLoading = false);
-        _saveHistory();
-        NotificationService.showNotification(
-          "اكتمل الرد من ${widget.agent.name}",
-          "يمكنك الآن قراءة الإجابة.",
-        );
-      },
-      onError: (e) {
-        setState(() {
-          _currentSession.messages[aiMessageIndex].text = "❌ خطأ: $e";
-          _isLoading = false;
-        });
-        _saveHistory();
-      },
-      cancelOnError: true,
-    );
+    // التوجيه: إذا كان محلياً استخدم الموديل المحلي، وإلا استخدم السحابة
+    if (_providerConfig!.providerType == 'local') {
+      _streamSubscription = _localLlama.generateStream(
+        systemPrompt: finalSystemPrompt,
+        userPrompt: finalPrompt,
+      ).listen(
+        (chunk) {
+          currentResponse += chunk;
+          setState(() {
+            _currentSession.messages[aiMessageIndex].text = currentResponse;
+          });
+          _scrollToBottom();
+        },
+        onDone: () {
+          setState(() => _isLoading = false);
+          _saveHistory();
+          NotificationService.showNotification("اكتمل الرد المحلي", "يمكنك الآن قراءة الإجابة.");
+        },
+        onError: (e) {
+          setState(() {
+            _currentSession.messages[aiMessageIndex].text = "❌ خطأ: $e";
+            _isLoading = false;
+          });
+        },
+      );
+    } else {
+      _streamSubscription = _api.generateStream(
+        provider: _providerConfig!.providerType,
+        apiKey: _providerConfig!.apiKey,
+        baseUrl: _providerConfig!.baseUrl,
+        modelName: _providerConfig!.modelName,
+        systemPrompt: finalSystemPrompt,
+        userPrompt: finalPrompt,
+        chatHistory: chatHistory,
+        useTools: _isWebSearchEnabled,
+      ).listen(
+        (chunk) {
+          currentResponse += chunk;
+          setState(() {
+            _currentSession.messages[aiMessageIndex].text = currentResponse;
+          });
+          _scrollToBottom();
+        },
+        onDone: () {
+          setState(() => _isLoading = false);
+          _saveHistory();
+          NotificationService.showNotification("اكتمل الرد من ${widget.agent.name}", "يمكنك الآن قراءة الإجابة.");
+        },
+        onError: (e) {
+          setState(() {
+            _currentSession.messages[aiMessageIndex].text = "❌ خطأ: $e";
+            _isLoading = false;
+          });
+          _saveHistory();
+        },
+        cancelOnError: true,
+      );
+    }
   }
 
-  // دالة تلخيص المحادثة لتوفير السياق
+  void _stopGeneration() {
+    _streamSubscription?.cancel();
+    setState(() => _isLoading = false);
+    setState(() {
+      _currentSession.messages.last.text += "\n\n[تم إيقاف التوليد]";
+    });
+    _saveHistory();
+  }
+
+  // دالة تلخيص المحادثة
   void _summarizeChat() async {
     if (_currentSession.messages.length < 3) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("المحادثة قصيرة جداً لتلخيصها.")));
       return;
+    }
+    
+    // لا يمكن تلخيص المحادثة باستخدام الموديل المحلي لأنه قد يستهلك الكثير من الموارد
+    if (_providerConfig?.providerType == 'local') {
+       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("التلخيص غير مدعوم حالياً في الموديل المحلي.")));
+       return;
     }
     if (_providerConfig == null) return;
 
@@ -233,15 +289,6 @@ class _ChatScreenState extends State<ChatScreen> {
       _isSummarizing = false;
     });
     
-    _saveHistory();
-  }
-
-  void _stopGeneration() {
-    _streamSubscription?.cancel();
-    setState(() => _isLoading = false);
-    setState(() {
-      _currentSession.messages.last.text += "\n\n[تم إيقاف التوليد]";
-    });
     _saveHistory();
   }
 
@@ -317,6 +364,9 @@ class _ChatScreenState extends State<ChatScreen> {
     _controller.dispose();
     _scrollController.dispose();
     _streamSubscription?.cancel();
+    if (_providerConfig?.providerType == 'local') {
+      _localLlama.dispose();
+    }
     super.dispose();
   }
 
@@ -327,7 +377,10 @@ class _ChatScreenState extends State<ChatScreen> {
         title: Column(
           children: [
             Text(_currentSession.title, style: const TextStyle(fontSize: 18)),
-            Text(widget.agent.modelName, style: const TextStyle(fontSize: 12, color: AppColors.success)),
+            Text(
+              _providerConfig?.providerType == 'local' ? "وضع الأوفلاين" : widget.agent.modelName, 
+              style: TextStyle(fontSize: 12, color: _providerConfig?.providerType == 'local' ? AppColors.success : AppColors.accentBlue)
+            ),
           ],
         ),
         actions: [
@@ -347,7 +400,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   children: [
                     Icon(Icons.compress, color: AppColors.primary, size: 20),
                     SizedBox(width: 8),
-                    Text('تلخيص المحادثة (توفير مساحة)', style: TextStyle(color: Colors.white)),
+                    Text('تلخيص المحادثة', style: TextStyle(color: Colors.white)),
                   ],
                 ),
               ),
@@ -398,7 +451,10 @@ class _ChatScreenState extends State<ChatScreen> {
           const SizedBox(height: 20),
           const Text("كيف يمكنني مساعدتك اليوم؟", style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
           const SizedBox(height: 10),
-          const Text("جرب أن ترفق ملفاً كبيراً واسألني عنه", style: TextStyle(color: AppColors.textSecondary, fontSize: 14)),
+          Text(
+            _providerConfig?.providerType == 'local' ? "وضع الأوفلاين يعمل (بدون إنترنت)" : "أنا متصل بالإنترنت وجاهز", 
+            style: const TextStyle(color: AppColors.textSecondary, fontSize: 14)
+          ),
         ],
       ),
     );
@@ -429,22 +485,6 @@ class _ChatScreenState extends State<ChatScreen> {
                 p: const TextStyle(color: Colors.white, fontSize: 16),
                 code: const TextStyle(backgroundColor: Colors.black45, color: Colors.greenAccent),
               ),
-              imageBuilder: (uri, title, alt) {
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8.0),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Image.network(
-                      uri.toString(),
-                      fit: BoxFit.cover,
-                      loadingBuilder: (context, child, loadingProgress) {
-                        if (loadingProgress == null) return child;
-                        return const Center(child: CircularProgressIndicator(color: AppColors.primary));
-                      },
-                    ),
-                  ),
-                );
-              },
             ),
       ),
     );
@@ -519,7 +559,7 @@ class _ChatScreenState extends State<ChatScreen> {
               const SizedBox(width: 8),
               IconButton(
                 icon: const Icon(Icons.tune, color: AppColors.textSecondary),
-                onPressed: _showSettingsDialog,
+                onPressed: _showSettingsModal,
               ),
               const Spacer(),
               Container(
