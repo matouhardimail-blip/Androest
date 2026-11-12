@@ -5,8 +5,8 @@ import '../models/agent_model.dart';
 import '../agent_manager.dart';
 import '../cloud_provider.dart';
 import '../online_api_service.dart';
-import '../mcp_tools.dart'; // استدعاء أدوات حفظ الملفات
-import 'workspace_screen.dart'; // استدعاء مساحة العمل
+import '../mcp_tools.dart'; 
+import 'workspace_screen.dart'; 
 
 class CreateScreen extends StatefulWidget {
   const CreateScreen({super.key});
@@ -28,7 +28,7 @@ class _CreateScreenState extends State<CreateScreen> {
   
   List<Map<String, String>> _executionLog = [];
   String _finalResult = "";
-  List<String> _savedFiles = []; // لحفظ أسماء الملفات التي تم إنشاؤها
+  List<String> _savedFiles = []; 
 
   @override
   void initState() {
@@ -100,7 +100,6 @@ class _CreateScreenState extends State<CreateScreen> {
       if (i == 0) {
         prompt = "أنت أول وكيل في فريق. المهمة الأساسية هي: '$originalTask'.\nقدم مساهمتك بناءً على دورك.";
       } else {
-        // إذا كان هذا الوكيل هو الأخير، نطلب منه كتابة الأكواد بصيغة محددة ليتم حفظها
         if (i == _selectedAgents.length - 1) {
           prompt = "المهمة الأساسية: '$originalTask'.\nهذا ما أنتجه الوكيل السابق:\n\n$currentContext\n\nأنت الوكيل الأخير. مهمتك هي إخراج الأكواد النهائية للمشروع.\nيجب أن تكتب كل ملف بالصيغة التالية بالضبط حتى يتم حفظه:\n```[اللغة] [مسار/الملف]\n[الكود هنا]\n```\nمثال:\n```dart lib/main.dart\nvoid main() {}\n```";
         } else {
@@ -115,7 +114,6 @@ class _CreateScreenState extends State<CreateScreen> {
       });
 
       if (success) {
-        // تحديث السياق بالنص الذي أنتجه الوكيل
         currentContext = _executionLog[logIndex]['text']!;
         setState(() {
           _executionLog[logIndex]['status'] = 'done';
@@ -132,13 +130,11 @@ class _CreateScreenState extends State<CreateScreen> {
       _isRunning = false;
       if (_executionLog.isNotEmpty && _executionLog.last['status'] == 'done') {
         _finalResult = currentContext;
-        // محاولة استخراج وحفظ الملفات من النتيجة النهائية
         _extractAndSaveFiles(_finalResult);
       }
     });
   }
 
-  // دالة استخراج الأكواد وحفظها في مساحة العمل
   Future<void> _extractAndSaveFiles(String markdownText) async {
     RegExp regExp = RegExp(r'```(\w+)?\s+([^\n\r]+)\r?\n([\s\S]*?)```');
     Iterable<RegExpMatch> matches = regExp.allMatches(markdownText);
@@ -177,6 +173,7 @@ class _CreateScreenState extends State<CreateScreen> {
         modelName: provider.modelName,
         systemPrompt: agent.systemPrompt,
         userPrompt: prompt,
+        chatHistory: [], // <--- تم إضافة هذا السطر لحل المشكلة
       );
 
       await for (final chunk in stream) {
@@ -275,7 +272,6 @@ class _CreateScreenState extends State<CreateScreen> {
                       ..._executionLog.map((log) => _buildLogCard(log)).toList(),
                     ],
 
-                    // عرض الملفات التي تم حفظها بنجاح
                     if (_savedFiles.isNotEmpty) ...[
                       const SizedBox(height: 20),
                       Container(
