@@ -1,4 +1,4 @@
-8import 'dart:convert';
+import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'models/agent_model.dart';
 import 'package:flutter/material.dart';
@@ -11,7 +11,7 @@ class AgentManager {
     String? data = prefs.getString(_key);
     
     if (data == null || data.isEmpty) {
-      return _defaultAgents(); // وكلاء افتراضيون في حال كان التطبيق جديداً
+      return _defaultAgents(); 
     }
     
     try {
@@ -42,4 +42,4 @@ class AgentManager {
       )
     ];
   }
-} 
+}
