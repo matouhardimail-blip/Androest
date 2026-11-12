@@ -15,6 +15,7 @@ import '../model_manager.dart';
 import '../notification_service.dart';
 import '../skill_manager.dart';
 import '../rag_service.dart';
+import '../pdf_service.dart'; // استدعاء خدمة PDF
 
 class ChatScreen extends StatefulWidget {
   final AgentModel agent;
@@ -110,8 +111,20 @@ class _ChatScreenState extends State<ChatScreen> {
       final XFile? file = await openFile(acceptedTypeGroups: [typeGroup]);
       
       if (file != null) {
-        String content = await File(file.path).readAsString(); 
+        String content = "";
         
+        // التحقق مما إذا كان الملف PDF
+        if (file.path.toLowerCase().endsWith('.pdf')) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("جاري استخراج النص من ملف PDF...")),
+          );
+          content = await PdfService.extractText(File(file.path));
+        } else {
+          // ملف نصي عادي
+          content = await File(file.path).readAsString();
+        }
+        
+        // إذا كان الملف كبيراً، يتم تقسيمه لأجزاء
         if (content.length > 3000) {
           _attachedFileChunks = _rag.splitIntoChunks(content);
         } else {
@@ -128,7 +141,7 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("فشل قراءة الملف. تأكد من أنه ملف نصي.")),
+        SnackBar(content: Text("فشل قراءة الملف: $e")),
       );
     }
   }
@@ -140,6 +153,7 @@ class _ChatScreenState extends State<ChatScreen> {
     String userText = _controller.text.trim();
     String finalPrompt = userText;
 
+    // معالجة الملف باستخدام RAG
     if (_attachedFileContent != null) {
       if (_attachedFileChunks.isNotEmpty) {
         List<String> relevantChunks = _rag.getRelevantChunks(userText, _attachedFileChunks);
@@ -555,7 +569,7 @@ class _ChatScreenState extends State<ChatScreen> {
               const SizedBox(width: 8),
               IconButton(
                 icon: const Icon(Icons.tune, color: AppColors.textSecondary),
-                onPressed: _showSettingsDialog, // <--- تم تصحيح الاسم هنا
+                onPressed: _showSettingsDialog,
               ),
               const Spacer(),
               Container(
