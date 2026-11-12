@@ -1,7 +1,7 @@
 name: agentphone
 description: "AgentPhone — منصة وكلاء ذكاء اصطناعي متعددة."
 publish_to: "none"
-version: 1.0.0+7
+version: 1.0.0+8
 
 environment:
   sdk: ">=3.5.0 <4.0.0"
@@ -27,13 +27,34 @@ dependencies:
   intl: ^0.19.0
   syncfusion_flutter_pdf: ^26.2.14
   image_picker: ^1.1.2
-  archive: ^3.6.1 # <--- أضفنا هذه المكتبة
-  share_plus: ^9.0.0 # <--- أضفنا هذه المكتبة
+  archive: ^3.6.1
+  share_plus: ^9.0.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
+  flutter_launcher_icons: ^0.13.1
+  flutter_native_splash: ^2.4.0
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/
+
+# إعدادات الأيقونة
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/icon.png"
+  min_sdk_android: 21
+  adaptive_icon_background: "#080B18"
+  adaptive_icon_foreground: "assets/icon.png"
+
+# إعدادات شاشة البداية
+flutter_native_splash:
+  color: "#080B18"
+  image: assets/splash.png
+  android_12:
+    color: "#080B18"
+    image: assets/splash.png
