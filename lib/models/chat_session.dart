@@ -2,7 +2,7 @@ import 'dart:convert';
 
 class ChatMessageData {
   final String role;
-  final String text;
+  String text; // <--- تم إزالة final من هنا ليصبح قابلاً للتعديل
   
   ChatMessageData({required this.role, required this.text});
 
