@@ -5,6 +5,7 @@ import '../chat_history_manager.dart';
 import '../models/chat_session.dart';
 import '../agent_manager.dart';
 import 'chat_screen.dart';
+import 'workspace_screen.dart'; // استيراد شاشة مساحة العمل
 
 class HomeScreen extends StatefulWidget {
   final Function(int) onTabChange;
@@ -31,7 +32,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _openSession(ChatSession session) async {
-    // جلب الوكيل المرتبط بهذه المحادثة
     List<dynamic> agents = await AgentManager.loadAgents();
     var agent = agents.firstWhere((a) => a.id == session.agentId, orElse: () => null);
     
@@ -40,7 +40,7 @@ class _HomeScreenState extends State<HomeScreen> {
         Navigator.push(
           context,
           MaterialPageRoute(builder: (context) => ChatScreen(agent: agent, existingSession: session)),
-        ).then((_) => _loadSessions()); // إعادة تحديث القائمة عند العودة
+        ).then((_) => _loadSessions());
       }
     } else {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("الوكيل المرتبط بهذه المحادثة قد تم حذفه.")));
@@ -71,11 +71,21 @@ class _HomeScreenState extends State<HomeScreen> {
                         Text("AI HUB", style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontSize: 22, letterSpacing: 1.2)),
                       ],
                     ),
+                    // زر مساحة العمل
+                    IconButton(
+                      icon: const Icon(Icons.folder_special, color: AppColors.primary, size: 28),
+                      tooltip: "مساحة عمل المشاريع",
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const WorkspaceScreen()),
+                        );
+                      },
+                    ),
                   ],
                 ),
                 const SizedBox(height: 25),
                 
-                // زر إنشاء محادثة جديدة
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(20),
@@ -95,7 +105,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       const Text("هل تريد بدء مهمة جديدة؟", style: TextStyle(color: Colors.white70, fontSize: 14)),
                       const SizedBox(height: 20),
                       ElevatedButton.icon(
-                        onPressed: () => widget.onTabChange(1), // الانتقال لتبويب الوكلاء
+                        onPressed: () => widget.onTabChange(1),
                         icon: const Icon(Icons.add, size: 18),
                         label: const Text("اختر وكيلاً وابدأ"),
                         style: ElevatedButton.styleFrom(
