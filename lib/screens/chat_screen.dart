@@ -605,4 +605,47 @@ class _ChatScreenState extends State<ChatScreen> {
                         ..._skills.map((skill) => ListTile(
                           leading: const Icon(Icons.extension, color: AppColors.primary),
                           title: Text(skill.name, style: const TextStyle(color: Colors.white)),
-                          onTap: ()
+                          onTap: () { setState(() => _selectedSkill = skill); Navigator.pop(context); },
+                        )).toList(),
+                      ],
+                    ),
+                  );
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: _selectedSkill != null ? AppColors.primary : Colors.white12),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.extension, size: 14, color: _selectedSkill != null ? AppColors.primary : AppColors.textSecondary),
+                      const SizedBox(width: 6),
+                      Text(_selectedSkill?.name ?? "مهارة", style: TextStyle(color: _selectedSkill != null ? Colors.white : AppColors.textSecondary, fontSize: 12)),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                icon: const Icon(Icons.tune, color: AppColors.textSecondary),
+                onPressed: _showSettingsDialog,
+              ),
+              const Spacer(),
+              Container(
+                decoration: const BoxDecoration(
+                  color: AppColors.primary,
+                  shape: BoxShape.circle,
+                ),
+                child: IconButton(
+                  icon: Icon(_isLoading ? Icons.stop : Icons.arrow_upward, color: Colors.white, size: 20),
+                  onPressed: _isLoading ? _stopGeneration : _sendMessage,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
