@@ -10,8 +10,8 @@ import '../models/chat_session.dart';
 import '../chat_history_manager.dart'; 
 import '../cloud_provider.dart';
 import '../online_api_service.dart';
-import '../local_llama_service.dart'; // استدعاء الموديل المحلي
-import '../model_manager.dart'; // لجلب مسار الموديل
+import '../local_llama_service.dart';
+import '../model_manager.dart';
 import '../notification_service.dart';
 import '../skill_manager.dart';
 import '../rag_service.dart';
@@ -30,7 +30,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final OnlineApiService _api = OnlineApiService();
-  final LocalLlamaService _localLlama = LocalLlamaService(); // خدمة الموديل المحلي
+  final LocalLlamaService _localLlama = LocalLlamaService();
   final RagService _rag = RagService();
   final ModelManager _modelManager = ModelManager();
   
@@ -81,7 +81,6 @@ class _ChatScreenState extends State<ChatScreen> {
         _providerConfig = provider;
       });
 
-      // إذا كان الموديل محلياً، نقوم بتحميله في الذاكرة
       if (provider.providerType == 'local') {
         File? modelFile = await _modelManager.getModelFile();
         if (modelFile != null) {
@@ -183,7 +182,6 @@ class _ChatScreenState extends State<ChatScreen> {
       finalSystemPrompt += "\n\nقم بتحليل السؤال بعمق، وفكر خطوة بخطوة.";
     }
 
-    // التوجيه: إذا كان محلياً استخدم الموديل المحلي، وإلا استخدم السحابة
     if (_providerConfig!.providerType == 'local') {
       _streamSubscription = _localLlama.generateStream(
         systemPrompt: finalSystemPrompt,
@@ -252,14 +250,12 @@ class _ChatScreenState extends State<ChatScreen> {
     _saveHistory();
   }
 
-  // دالة تلخيص المحادثة
   void _summarizeChat() async {
     if (_currentSession.messages.length < 3) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("المحادثة قصيرة جداً لتلخيصها.")));
       return;
     }
     
-    // لا يمكن تلخيص المحادثة باستخدام الموديل المحلي لأنه قد يستهلك الكثير من الموارد
     if (_providerConfig?.providerType == 'local') {
        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("التلخيص غير مدعوم حالياً في الموديل المحلي.")));
        return;
@@ -559,7 +555,7 @@ class _ChatScreenState extends State<ChatScreen> {
               const SizedBox(width: 8),
               IconButton(
                 icon: const Icon(Icons.tune, color: AppColors.textSecondary),
-                onPressed: _showSettingsModal,
+                onPressed: _showSettingsDialog, // <--- تم تصحيح الاسم هنا
               ),
               const Spacer(),
               Container(
