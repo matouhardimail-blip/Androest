@@ -16,8 +16,9 @@ class OnlineApiService {
     required String modelName,
     required String systemPrompt,
     required String userPrompt,
-    required List<Map<String, String>> chatHistory, // <--- إضافة سجل المحادثة
+    required List<Map<String, String>> chatHistory,
     bool useTools = false,
+    String? imageBase64, // <--- إضافة متغير للصورة
   }) async* {
     try {
       final List<Map<String, dynamic>> tools = [
@@ -43,8 +44,8 @@ class OnlineApiService {
             "parameters": {
               "type": "object",
               "properties": {
-                "file_path": {"type": "string", "description": "مسار الملف (مثال: lib/main.dart)"},
-                "content": {"type": "string", "description": "الكود أو النص الكامل للملف"}
+                "file_path": {"type": "string", "description": "مسار الملف"},
+                "content": {"type": "string", "description": "الكود أو النص الكامل"}
               },
               "required": ["file_path", "content"]
             }
@@ -75,17 +76,13 @@ class OnlineApiService {
 \n\n[تعليمات هامة جداً]:
 التاريخ اليوم هو: $currentDate.
 أنت وكيل ذكي ولديك أدوات (بحث، كتابة ملفات، توليد صور).
-إذا طلب منك المستخدم رسم صورة، استخدم أداة (generate_image).
 """;
       }
 
-      // بناء قائمة الرسائل (System + History + Current Prompt)
       List<Map<String, dynamic>> messages = [
         {'role': 'system', 'content': finalSystemPrompt},
       ];
 
-      // إضافة سجل المحادثة (مع تطبيق Sliding Window لتجنب تجاوز الحد)
-      // نأخذ آخر 10 رسائل كحد أقصى للحفاظ على السياق
       int maxHistoryLength = 10; 
       int startIndex = chatHistory.length > maxHistoryLength ? chatHistory.length - maxHistoryLength : 0;
       
@@ -96,8 +93,23 @@ class OnlineApiService {
         });
       }
 
-      // إضافة الرسالة الحالية
-      messages.add({'role': 'user', 'content': userPrompt});
+      // إضافة الرسالة الحالية (مع الصورة إذا وجدت)
+      if (imageBase64 != null) {
+        messages.add({
+          'role': 'user',
+          'content': [
+            {'type': 'text', 'text': userPrompt},
+            {
+              'type': 'image_url',
+              'image_url': {
+                'url': 'data:image/jpeg;base64,$imageBase64'
+              }
+            }
+          ]
+        });
+      } else {
+        messages.add({'role': 'user', 'content': userPrompt});
+      }
 
       bool keepRunning = true;
       int toolCallCount = 0;
@@ -219,7 +231,7 @@ class OnlineApiService {
       }
     } on DioException catch (e) {
       if (e.response?.statusCode == 429) {
-        yield "\n\n⚠️ **الرجاء الانتظار بضع ثوانٍ (تجاوزت الحد الأقصى للطلبات).**";
+        yield "\n\n⚠️ **الرجاء الانتظار بضع ثوانٍ.**";
       } else {
         yield "\n\n❌ خطأ في الاتصال: ${e.message}";
       }
@@ -228,7 +240,6 @@ class OnlineApiService {
     }
   }
 
-  // دالة جديدة: تلخيص المحادثة
   Future<String> summarizeChat({
     required String provider,
     required String apiKey,
@@ -250,7 +261,7 @@ class OnlineApiService {
         data: jsonEncode({
           'model': modelName,
           'messages': [
-            {'role': 'system', 'content': 'أنت خبير في تلخيص المحادثات. لخص المحادثة التالية في نقاط مختصرة جداً مع الحفاظ على السياق الأساسي.'},
+            {'role': 'system', 'content': 'أنت خبير في تلخيص المحادثات. لخص المحادثة التالية في نقاط مختصرة جداً.'},
             {'role': 'user', 'content': historyText},
           ],
         }),
@@ -261,7 +272,6 @@ class OnlineApiService {
     }
   }
 
-  // دالة اختبار الاتصال
   Future<String?> testConnection({
     required String provider,
     required String apiKey,
