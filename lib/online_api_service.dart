@@ -3,7 +3,7 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:intl/intl.dart';
 import 'web_search.dart';
-import 'mcp_tools.dart'; // استدعاء أدوات MCP
+import 'mcp_tools.dart';
 
 class OnlineApiService {
   final Dio _dio = Dio();
@@ -19,7 +19,6 @@ class OnlineApiService {
     bool useTools = false,
   }) async* {
     try {
-      // تعريف جميع الأدوات المتاحة للموديل
       final List<Map<String, dynamic>> tools = [
         {
           "type": "function",
@@ -39,7 +38,7 @@ class OnlineApiService {
           "type": "function",
           "function": {
             "name": "write_file",
-            "description": "إنشاء أو تعديل ملف برمجي على جهاز المستخدم. استخدم هذا عند طلب كتابة كود أو إنشاء مشروع.",
+            "description": "إنشاء أو تعديل ملف برمجي على جهاز المستخدم.",
             "parameters": {
               "type": "object",
               "properties": {
@@ -53,14 +52,14 @@ class OnlineApiService {
         {
           "type": "function",
           "function": {
-            "name": "read_file",
-            "description": "قراءة محتوى ملف موجود على جهاز المستخدم.",
+            "name": "generate_image",
+            "description": "ارسم أو أنشئ صورة بناءً على وصف. استخدم هذه الأداة عندما يطلب المستخدم صورة.",
             "parameters": {
               "type": "object",
               "properties": {
-                "file_path": {"type": "string", "description": "مسار الملف"}
+                "prompt": {"type": "string", "description": "وصف الصورة بالإنجليزية (مثال: a cat in space, digital art)"}
               },
-              "required": ["file_path"]
+              "required": ["prompt"]
             }
           }
         }
@@ -74,8 +73,8 @@ class OnlineApiService {
 
 \n\n[تعليمات هامة جداً]:
 التاريخ اليوم هو: $currentDate.
-أنت وكيل ذكي ولديك أدوات (بحث، كتابة ملفات، قراءة ملفات).
-إذا طلب منك المستخدم كتابة كود أو إنشاء مشروع، يجب عليك استخدام أداة (write_file) فوراً لكل ملف.
+أنت وكيل ذكي ولديك أدوات (بحث، كتابة ملفات، توليد صور).
+إذا طلب منك المستخدم رسم صورة، استخدم أداة (generate_image) واكتب الوصف بالإنجليزية.
 لا تكتفِ بكتابة الكود في الدردشة، بل استخدم الأداة ليتم حفظه على جهاز المستخدم.
 """;
       }
@@ -88,7 +87,7 @@ class OnlineApiService {
       bool keepRunning = true;
       int toolCallCount = 0;
 
-      while (keepRunning && toolCallCount < 3) { // حد أقصى 3 عمليات أدوات متتالية
+      while (keepRunning && toolCallCount < 3) {
         keepRunning = false;
         
         final response = await _dio.post(
@@ -144,7 +143,6 @@ class OnlineApiService {
           }
         }
 
-        // تنفيذ الأدوات
         if (isToolCall) {
           keepRunning = true;
           toolCallCount++;
@@ -152,7 +150,7 @@ class OnlineApiService {
           String toolResult = "";
           yield "\n\n> ⚙️ *جاري تنفيذ الأداة: $toolCallName...*\n\n";
           
-          await Future.delayed(const Duration(seconds: 1)); // تأخير بسيط
+          await Future.delayed(const Duration(milliseconds: 500));
 
           try {
             final args = jsonDecode(toolCallArgs);
@@ -168,10 +166,15 @@ class OnlineApiService {
               yield "\n\n> 💾 *جاري حفظ الملف: $path...*\n\n";
               toolResult = await McpTools.writeFile(path, content);
             }
-            else if (toolCallName == "read_file") {
-              String path = args['file_path'] ?? "";
-              yield "\n\n> 📖 *جاري قراءة الملف: $path...*\n\n";
-              toolResult = await McpTools.readFile(path);
+            else if (toolCallName == "generate_image") {
+              String prompt = args['prompt'] ?? "";
+              yield "\n\n> 🎨 *جاري رسم الصورة: $prompt...*\n\n";
+              
+              // استخدام خدمة Pollinations المجانية
+              String encodedPrompt = Uri.encodeComponent(prompt);
+              String imageUrl = 'https://image.pollinations.ai/prompt/$encodedPrompt?width=1024&height=1024&nologo=true';
+              
+              toolResult = "تم توليد الصورة بنجاح. رابط الصورة هو: $imageUrl\n\nاعرض الصورة للمستخدم باستخدام صيغة Markdown: ![صورة]($imageUrl)";
             }
           } catch (e) {
             toolResult = "خطأ في تنفيذ الأداة: $e";
@@ -213,7 +216,6 @@ class OnlineApiService {
     }
   }
 
-  // دالة اختبار الاتصال
   Future<String?> testConnection({
     required String provider,
     required String apiKey,
