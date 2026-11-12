@@ -22,13 +22,13 @@ class OnlineApiService {
           "type": "function",
           "function": {
             "name": "web_search",
-            "description": "ابحث في الإنترنت مرة واحدة فقط للحصول على المعلومات الحديثة.",
+            "description": "أداة بحث حقيقية في الإنترنت. استخدمها دائماً للأخبار والطقس والمعلومات الحديثة.",
             "parameters": {
               "type": "object",
               "properties": {
                 "query": {
                   "type": "string",
-                  "description": "كلمة البحث (مثال: weather in Agadir)"
+                  "description": "كلمة البحث بالإنجليزية"
                 }
               },
               "required": ["query"]
@@ -37,13 +37,25 @@ class OnlineApiService {
         }
       ];
 
+      // حقن تعليمات صارمة إذا كان البحث مفعلاً
+      String finalSystemPrompt = systemPrompt;
+      if (useTools) {
+        finalSystemPrompt += """
+
+\n\n[تعليمات هامة جداً]:
+أنت وكيل ذكي متصل بالإنترنت. يحظر عليك تماماً كتابة "لا يمكنني البحث" أو "بحثي مقيد".
+إذا سألك المستخدم عن أخبار، طقس، أو أي معلومات حديثة، يجب عليك فوراً استخدام أداة (web_search) دون تردد.
+لا تجب من معرفتك الداخلية، بل ابحث أولاً.
+""";
+      }
+
       List<Map<String, dynamic>> messages = [
-        {'role': 'system', 'content': systemPrompt},
+        {'role': 'system', 'content': finalSystemPrompt},
         {'role': 'user', 'content': userPrompt},
       ];
 
       bool keepRunning = true;
-      int toolCallCount = 0; // عداد لمنع الموديل من تكرار البحث
+      int toolCallCount = 0;
 
       while (keepRunning) {
         keepRunning = false;
@@ -61,7 +73,7 @@ class OnlineApiService {
             'model': modelName,
             'messages': messages,
             if (useTools) 'tools': tools,
-            if (useTools) 'tool_choice': 'auto',
+            if (useTools) 'tool_choice': 'auto', // يترك للموديل القرار، لكن التعليمات أعلاه تجبره
             'stream': true,
           }),
         );
@@ -100,10 +112,10 @@ class OnlineApiService {
           }
         }
 
-        // إذا طلب الموديل أداة، نتحقق من العداد
+        // إذا طلب أداة بحث
         if (isToolCall && toolCallName == "web_search" && toolCallCount < 1) {
           keepRunning = true;
-          toolCallCount++; // زيادة العداد
+          toolCallCount++;
           
           String searchQuery = "";
           try {
@@ -114,14 +126,13 @@ class OnlineApiService {
           if (searchQuery.isNotEmpty) {
             yield "\n\n> 🔍 *جاري البحث في الإنترنت عن: $searchQuery...*\n\n";
             
-            // إضافة تأخير بسيط لتجنب الـ Rate Limit
             await Future.delayed(const Duration(seconds: 1));
             
             String searchResults = await _webSearch.search(searchQuery);
             
             messages.add({
               'role': 'assistant',
-              'content': currentText,
+              'content': currentText.isEmpty ? null : currentText,
               'tool_calls': [
                 {
                   'id': 'call_123',
@@ -135,20 +146,20 @@ class OnlineApiService {
               'role': 'tool',
               'tool_call_id': 'call_123',
               'name': 'web_search',
-              'content': searchResults,
+              'content': searchResults.isEmpty ? "لم يتم العثور على نتائج." : searchResults,
             });
 
-            // إضافة رسالة نظام صارمة للموديل
+            // نطلب منه الإجابة الآن
             messages.add({
               'role': 'system',
-              'content': "لقد قمت بالبحث بالفعل. الآن يجب عليك الإجابة على المستخدم مباشرة باستخدام نتائج البحث التي وصلتك. لا تطلب البحث مرة أخرى."
+              'content': "لقد نفذت البحث بنجاح. الآن أجب على المستخدم بناءً على النتائج. لا تعتذر."
             });
           }
         }
       }
     } on DioException catch (e) {
       if (e.response?.statusCode == 429) {
-        yield "\n\n⚠️ **عذراً، لقد تجاوزت الحد الأقصى للطلبات المسموح بها في الدقيقة (Rate Limit).**\nيرجى الانتظار بضع ثوانٍ ثم المحاولة مرة أخرى.";
+        yield "\n\n⚠️ **الرجاء الانتظار بضع ثوانٍ (تجاوزت الحد الأقصى للطلبات).**";
       } else {
         yield "\n\n❌ خطأ في الاتصال: ${e.message}";
       }
@@ -157,7 +168,7 @@ class OnlineApiService {
     }
   }
 
-  // دالة اختبار الاتصال (كما هي بدون تغيير)
+  // ... (بقية دالة testConnection كما هي)
   Future<String?> testConnection({
     required String provider,
     required String apiKey,
