@@ -29,9 +29,7 @@ class _AgentsScreenState extends State<AgentsScreen> {
     setState(() => _isLoading = false);
   }
 
-  // دالة موحدة للإضافة والتعديل
   Future<void> _showAgentDialog({AgentModel? agentToEdit}) async {
-    // 1. جلب المزودين بشكل مباشر عند فتح النافذة لضمان ظهور أي إضافات جديدة
     List<CloudProviderConfig> providers = await CloudConfigManager.loadProviders();
 
     if (providers.isEmpty) {
@@ -60,7 +58,7 @@ class _AgentsScreenState extends State<AgentsScreen> {
         return StatefulBuilder(
           builder: (context, setStateDialog) {
             return AlertDialog(
-              backgroundColor: AppColors.cardBackground, // ستايل داكن
+              backgroundColor: AppColors.cardBackground, 
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
               title: Text(
                 agentToEdit == null ? "إنشاء وكيل جديد" : "تعديل الوكيل",
@@ -270,6 +268,7 @@ class _AgentsScreenState extends State<AgentsScreen> {
                                 const SizedBox(width: 5),
                                 ElevatedButton(
                                   onPressed: () {
+                                    // هنا نفتح الدردشة بدون تمرير محادثة سابقة (محادثة جديدة)
                                     Navigator.push(
                                       context,
                                       MaterialPageRoute(builder: (context) => ChatScreen(agent: agent)),
