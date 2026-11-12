@@ -1,18 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:file_selector/file_selector.dart';
+import 'package:uuid/uuid.dart';
 import 'dart:async';
 import 'dart:io';
 import '../theme.dart';
 import '../models/agent_model.dart';
+import '../models/chat_session.dart'; // استدعاء نموذج المحادثة
+import '../chat_history_manager.dart'; // استدعاء مدير الحفظ
 import '../cloud_provider.dart';
 import '../online_api_service.dart';
 import '../notification_service.dart';
-import '../skill_manager.dart'; // استدعاء المهارات
+import '../skill_manager.dart';
 
 class ChatScreen extends StatefulWidget {
   final AgentModel agent;
-  const ChatScreen({super.key, required this.agent});
+  final ChatSession? existingSession; // إذا كانت المحادثة موجودة مسبقاً
+
+  const ChatScreen({super.key, required this.agent, this.existingSession});
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -23,7 +28,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final ScrollController _scrollController = ScrollController();
   final OnlineApiService _api = OnlineApiService();
   
-  List<Map<String, String>> _messages = [];
+  late ChatSession _currentSession;
   bool _isLoading = false;
   CloudProviderConfig? _providerConfig;
   String? _attachedFileContent;
@@ -32,14 +37,30 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isDeepAnalysisEnabled = false;
   bool _isWebSearchEnabled = false;
   
-  // المهارات
   List<Skill> _skills = [];
   Skill? _selectedSkill;
 
   @override
   void initState() {
     super.initState();
+    _initSession();
     _loadData();
+  }
+
+  void _initSession() {
+    if (widget.existingSession != null) {
+      _currentSession = widget.existingSession!;
+    } else {
+      // إنشاء محادثة جديدة
+      _currentSession = ChatSession(
+        id: const Uuid().v4(),
+        title: "محادثة جديدة",
+        agentId: widget.agent.id,
+        agentName: widget.agent.name,
+        messages: [],
+        lastUpdated: DateTime.now(),
+      );
+    }
   }
 
   Future<void> _loadData() async {
@@ -51,9 +72,14 @@ class _ChatScreenState extends State<ChatScreen> {
       });
     } catch (e) {
       setState(() {
-        _messages.add({'role': 'ai', 'text': 'خطأ: مزود الخدمة المرتبط بهذا الوكيل غير موجود.'});
+        _currentSession.messages.add(ChatMessageData(role: 'ai', text: 'خطأ: مزود الخدمة غير موجود.'));
       });
     }
+  }
+
+  void _saveHistory() {
+    _currentSession.lastUpdated = DateTime.now();
+    ChatHistoryManager.saveSession(_currentSession);
   }
 
   Future<void> _pickFile() async {
@@ -72,7 +98,7 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("فشل قراءة الملف. تأكد من أنه ملف نصي.")),
+        const SnackBar(content: Text("فشل قراءة الملف.")),
       );
     }
   }
@@ -89,19 +115,24 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     setState(() {
-      _messages.add({'role': 'user', 'text': userText.isEmpty ? "تم إرفاق ملف" : userText});
-      _messages.add({'role': 'ai', 'text': ''}); 
+      // إذا كانت هذه أول رسالة، نستخدمها كعنوان للمحادثة
+      if (_currentSession.messages.isEmpty && userText.isNotEmpty) {
+        _currentSession.title = userText.length > 25 ? userText.substring(0, 25) + "..." : userText;
+      }
+      
+      _currentSession.messages.add(ChatMessageData(role: 'user', text: userText.isEmpty ? "تم إرفاق ملف" : userText));
+      _currentSession.messages.add(ChatMessageData(role: 'ai', text: '')); 
       _isLoading = true;
       _controller.clear();
       _attachedFileContent = null;
     });
     
+    _saveHistory();
     _scrollToBottom();
 
     String currentResponse = "";
-    int aiMessageIndex = _messages.length - 1;
+    int aiMessageIndex = _currentSession.messages.length - 1;
 
-    // دمج شخصية الوكيل مع المهارة المختارة
     String finalSystemPrompt = widget.agent.systemPrompt;
     if (_selectedSkill != null) {
       finalSystemPrompt += "\n\n[مهارة إضافية - ${_selectedSkill!.name}]:\n${_selectedSkill!.systemPrompt}";
@@ -123,12 +154,13 @@ class _ChatScreenState extends State<ChatScreen> {
       (chunk) {
         currentResponse += chunk;
         setState(() {
-          _messages[aiMessageIndex]['text'] = currentResponse;
+          _currentSession.messages[aiMessageIndex].text = currentResponse;
         });
         _scrollToBottom();
       },
       onDone: () {
         setState(() => _isLoading = false);
+        _saveHistory(); // حفظ المحادثة بعد اكتمال الرد
         NotificationService.showNotification(
           "اكتمل الرد من ${widget.agent.name}",
           "يمكنك الآن قراءة الإجابة.",
@@ -136,9 +168,10 @@ class _ChatScreenState extends State<ChatScreen> {
       },
       onError: (e) {
         setState(() {
-          _messages[aiMessageIndex]['text'] = "❌ خطأ: $e";
+          _currentSession.messages[aiMessageIndex].text = "❌ خطأ: $e";
           _isLoading = false;
         });
+        _saveHistory();
       },
       cancelOnError: true,
     );
@@ -148,12 +181,9 @@ class _ChatScreenState extends State<ChatScreen> {
     _streamSubscription?.cancel();
     setState(() => _isLoading = false);
     setState(() {
-      _messages.last['text'] = _messages.last['text']! + "\n\n[تم إيقاف التوليد]";
+      _currentSession.messages.last.text += "\n\n[تم إيقاف التوليد]";
     });
-  }
-
-  void _clearChat() {
-    setState(() => _messages.clear());
+    _saveHistory();
   }
 
   void _scrollToBottom() {
@@ -237,44 +267,24 @@ class _ChatScreenState extends State<ChatScreen> {
       appBar: AppBar(
         title: Column(
           children: [
-            Text(widget.agent.name, style: const TextStyle(fontSize: 18)),
+            Text(_currentSession.title, style: const TextStyle(fontSize: 18)),
             Text(widget.agent.modelName, style: const TextStyle(fontSize: 12, color: AppColors.success)),
           ],
         ),
-        actions: [
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert, color: Colors.white),
-            onSelected: (value) {
-              if (value == 'clear') _clearChat();
-            },
-            itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-              const PopupMenuItem<String>(
-                value: 'clear',
-                child: Row(
-                  children: [
-                    Icon(Icons.delete_outline, color: AppColors.danger, size: 20),
-                    SizedBox(width: 8),
-                    Text('مسح المحادثة', style: TextStyle(color: Colors.white)),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
       ),
       body: Column(
         children: [
           Expanded(
-            child: _messages.isEmpty 
+            child: _currentSession.messages.isEmpty 
               ? _buildEmptyState() 
               : ListView.builder(
                   controller: _scrollController,
                   padding: const EdgeInsets.all(16),
-                  itemCount: _messages.length,
+                  itemCount: _currentSession.messages.length,
                   itemBuilder: (context, index) {
-                    final msg = _messages[index];
-                    bool isUser = msg['role'] == 'user';
-                    return _buildMessageBubble(msg['text']!, isUser);
+                    final msg = _currentSession.messages[index];
+                    bool isUser = msg.role == 'user';
+                    return _buildMessageBubble(msg.text, isUser);
                   },
                 ),
           ),
@@ -321,12 +331,6 @@ class _ChatScreenState extends State<ChatScreen> {
               styleSheet: MarkdownStyleSheet(
                 p: const TextStyle(color: Colors.white, fontSize: 16),
                 code: const TextStyle(backgroundColor: Colors.black45, color: Colors.greenAccent),
-                blockquoteDecoration: BoxDecoration(
-                  color: AppColors.background,
-                  borderRadius: BorderRadius.circular(8),
-                  border: const Border(left: BorderSide(color: AppColors.primary, width: 4)),
-                ),
-                blockquotePadding: const EdgeInsets.all(10),
               ),
             ),
       ),
@@ -362,8 +366,6 @@ class _ChatScreenState extends State<ChatScreen> {
                 icon: const Icon(Icons.attach_file, color: AppColors.textSecondary),
                 onPressed: _pickFile,
               ),
-              
-              // قائمة اختيار المهارة
               GestureDetector(
                 onTap: () {
                   showModalBottomSheet(
