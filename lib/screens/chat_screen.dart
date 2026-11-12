@@ -12,6 +12,7 @@ import '../cloud_provider.dart';
 import '../online_api_service.dart';
 import '../notification_service.dart';
 import '../skill_manager.dart';
+import '../rag_service.dart'; // استدعاء خدمة RAG
 
 class ChatScreen extends StatefulWidget {
   final AgentModel agent;
@@ -27,11 +28,15 @@ class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final OnlineApiService _api = OnlineApiService();
+  final RagService _rag = RagService(); // كائن RAG
   
   late ChatSession _currentSession;
   bool _isLoading = false;
   CloudProviderConfig? _providerConfig;
+  
   String? _attachedFileContent;
+  List<String> _attachedFileChunks = []; // لتخزين أجزاء الملف إذا كان كبيراً
+  
   StreamSubscription? _streamSubscription;
 
   bool _isDeepAnalysisEnabled = false;
@@ -88,16 +93,25 @@ class _ChatScreenState extends State<ChatScreen> {
       
       if (file != null) {
         String content = await File(file.path).readAsString(); 
+        
+        // تطبيق RAG: إذا كان الملف كبيراً (أكثر من 3000 حرف)، نقسمه لأجزاء
+        if (content.length > 3000) {
+          _attachedFileChunks = _rag.splitIntoChunks(content);
+        } else {
+          _attachedFileChunks = [];
+        }
+
         setState(() {
           _attachedFileContent = content;
         });
+        
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text("تم إرفاق الملف: ${file.name}")),
         );
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("فشل قراءة الملف.")),
+        const SnackBar(content: Text("فشل قراءة الملف. تأكد من أنه ملف نصي.")),
       );
     }
   }
@@ -109,8 +123,17 @@ class _ChatScreenState extends State<ChatScreen> {
     String userText = _controller.text.trim();
     String finalPrompt = userText;
 
+    // معالجة الملف باستخدام RAG إذا لزم الأمر
     if (_attachedFileContent != null) {
-      finalPrompt = "محتوى الملف المرفق:\n$_attachedFileContent\n\nطلب المستخدم:\n$userText";
+      if (_attachedFileChunks.isNotEmpty) {
+        // الملف كبير: نبحث عن الأجزاء ذات الصلة فقط
+        List<String> relevantChunks = _rag.getRelevantChunks(userText, _attachedFileChunks);
+        String context = relevantChunks.join('\n\n...\n\n');
+        finalPrompt = "إليك الأجزاء ذات الصلة من الملف المرفق:\n\n$context\n\nسؤال المستخدم:\n$userText\n\nأجب بناءً على الأجزاء المرفقة فقط.";
+      } else {
+        // الملف صغير: نمرره كاملاً
+        finalPrompt = "محتوى الملف المرفق:\n$_attachedFileContent\n\nطلب المستخدم:\n$userText";
+      }
     }
 
     setState(() {
@@ -123,6 +146,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _isLoading = true;
       _controller.clear();
       _attachedFileContent = null;
+      _attachedFileChunks = [];
     });
     
     _saveHistory();
@@ -301,7 +325,7 @@ class _ChatScreenState extends State<ChatScreen> {
           const SizedBox(height: 20),
           const Text("كيف يمكنني مساعدتك اليوم؟", style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
           const SizedBox(height: 10),
-          const Text("جرب أن تطلب رسم صورة أو كتابة كود", style: TextStyle(color: AppColors.textSecondary, fontSize: 14)),
+          const Text("جرب أن ترفق ملفاً كبيراً واسألني عنه", style: TextStyle(color: AppColors.textSecondary, fontSize: 14)),
         ],
       ),
     );
@@ -332,7 +356,6 @@ class _ChatScreenState extends State<ChatScreen> {
                 p: const TextStyle(color: Colors.white, fontSize: 16),
                 code: const TextStyle(backgroundColor: Colors.black45, color: Colors.greenAccent),
               ),
-              // هذا الجزء هو المسؤول عن عرض الصور داخل الدردشة
               imageBuilder: (uri, title, alt) {
                 return Padding(
                   padding: const EdgeInsets.symmetric(vertical: 8.0),
@@ -344,9 +367,6 @@ class _ChatScreenState extends State<ChatScreen> {
                       loadingBuilder: (context, child, loadingProgress) {
                         if (loadingProgress == null) return child;
                         return const Center(child: CircularProgressIndicator(color: AppColors.primary));
-                      },
-                      errorBuilder: (context, error, stackTrace) {
-                        return const Text("فشل تحميل الصورة", style: TextStyle(color: AppColors.danger));
                       },
                     ),
                   ),
