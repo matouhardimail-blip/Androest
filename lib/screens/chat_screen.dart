@@ -6,8 +6,8 @@ import 'dart:async';
 import 'dart:io';
 import '../theme.dart';
 import '../models/agent_model.dart';
-import '../models/chat_session.dart'; // استدعاء نموذج المحادثة
-import '../chat_history_manager.dart'; // استدعاء مدير الحفظ
+import '../models/chat_session.dart'; 
+import '../chat_history_manager.dart'; 
 import '../cloud_provider.dart';
 import '../online_api_service.dart';
 import '../notification_service.dart';
@@ -15,7 +15,7 @@ import '../skill_manager.dart';
 
 class ChatScreen extends StatefulWidget {
   final AgentModel agent;
-  final ChatSession? existingSession; // إذا كانت المحادثة موجودة مسبقاً
+  final ChatSession? existingSession;
 
   const ChatScreen({super.key, required this.agent, this.existingSession});
 
@@ -51,7 +51,6 @@ class _ChatScreenState extends State<ChatScreen> {
     if (widget.existingSession != null) {
       _currentSession = widget.existingSession!;
     } else {
-      // إنشاء محادثة جديدة
       _currentSession = ChatSession(
         id: const Uuid().v4(),
         title: "محادثة جديدة",
@@ -115,7 +114,6 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     setState(() {
-      // إذا كانت هذه أول رسالة، نستخدمها كعنوان للمحادثة
       if (_currentSession.messages.isEmpty && userText.isNotEmpty) {
         _currentSession.title = userText.length > 25 ? userText.substring(0, 25) + "..." : userText;
       }
@@ -160,7 +158,7 @@ class _ChatScreenState extends State<ChatScreen> {
       },
       onDone: () {
         setState(() => _isLoading = false);
-        _saveHistory(); // حفظ المحادثة بعد اكتمال الرد
+        _saveHistory();
         NotificationService.showNotification(
           "اكتمل الرد من ${widget.agent.name}",
           "يمكنك الآن قراءة الإجابة.",
@@ -236,7 +234,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   ),
                   SwitchListTile(
                     title: const Text("تفعيل الأدوات (Tools / MCP)", style: TextStyle(color: Colors.white)),
-                    subtitle: const Text("السماح للموديل بالبحث وحفظ الملفات", style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                    subtitle: const Text("السماح للموديل بالبحث وحفظ الملفات والرسم", style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
                     value: _isWebSearchEnabled,
                     activeColor: AppColors.primary,
                     onChanged: (val) {
@@ -302,6 +300,8 @@ class _ChatScreenState extends State<ChatScreen> {
           const Icon(Icons.auto_awesome, size: 60, color: AppColors.primary),
           const SizedBox(height: 20),
           const Text("كيف يمكنني مساعدتك اليوم؟", style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 10),
+          const Text("جرب أن تطلب رسم صورة أو كتابة كود", style: TextStyle(color: AppColors.textSecondary, fontSize: 14)),
         ],
       ),
     );
@@ -332,6 +332,26 @@ class _ChatScreenState extends State<ChatScreen> {
                 p: const TextStyle(color: Colors.white, fontSize: 16),
                 code: const TextStyle(backgroundColor: Colors.black45, color: Colors.greenAccent),
               ),
+              // هذا الجزء هو المسؤول عن عرض الصور داخل الدردشة
+              imageBuilder: (uri, title, alt) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8.0),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.network(
+                      uri.toString(),
+                      fit: BoxFit.cover,
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return const Center(child: CircularProgressIndicator(color: AppColors.primary));
+                      },
+                      errorBuilder: (context, error, stackTrace) {
+                        return const Text("فشل تحميل الصورة", style: TextStyle(color: AppColors.danger));
+                      },
+                    ),
+                  ),
+                );
+              },
             ),
       ),
     );
