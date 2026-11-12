@@ -8,6 +8,7 @@ import '../models/agent_model.dart';
 import '../cloud_provider.dart';
 import '../online_api_service.dart';
 import '../notification_service.dart';
+import '../skill_manager.dart'; // استدعاء المهارات
 
 class ChatScreen extends StatefulWidget {
   final AgentModel agent;
@@ -30,15 +31,20 @@ class _ChatScreenState extends State<ChatScreen> {
 
   bool _isDeepAnalysisEnabled = false;
   bool _isWebSearchEnabled = false;
+  
+  // المهارات
+  List<Skill> _skills = [];
+  Skill? _selectedSkill;
 
   @override
   void initState() {
     super.initState();
-    _loadProviderConfig();
+    _loadData();
   }
 
-  Future<void> _loadProviderConfig() async {
+  Future<void> _loadData() async {
     final providers = await CloudConfigManager.loadProviders();
+    _skills = await SkillManager.loadSkills();
     try {
       setState(() {
         _providerConfig = providers.firstWhere((p) => p.id == widget.agent.providerId);
@@ -95,7 +101,12 @@ class _ChatScreenState extends State<ChatScreen> {
     String currentResponse = "";
     int aiMessageIndex = _messages.length - 1;
 
+    // دمج شخصية الوكيل مع المهارة المختارة
     String finalSystemPrompt = widget.agent.systemPrompt;
+    if (_selectedSkill != null) {
+      finalSystemPrompt += "\n\n[مهارة إضافية - ${_selectedSkill!.name}]:\n${_selectedSkill!.systemPrompt}";
+    }
+    
     if (_isDeepAnalysisEnabled) {
       finalSystemPrompt += "\n\nقم بتحليل السؤال بعمق، وفكر خطوة بخطوة قبل إعطاء الإجابة النهائية.";
     }
@@ -143,13 +154,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _clearChat() {
     setState(() => _messages.clear());
-  }
-
-  Future<void> _archiveChat() async {
-    _clearChat();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("تم أرشفة المحادثة (محلياً).")),
-    );
   }
 
   void _scrollToBottom() {
@@ -242,7 +246,6 @@ class _ChatScreenState extends State<ChatScreen> {
             icon: const Icon(Icons.more_vert, color: Colors.white),
             onSelected: (value) {
               if (value == 'clear') _clearChat();
-              if (value == 'archive') _archiveChat();
             },
             itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
               const PopupMenuItem<String>(
@@ -275,22 +278,6 @@ class _ChatScreenState extends State<ChatScreen> {
                   },
                 ),
           ),
-          if (_attachedFileContent != null)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              color: AppColors.cardBackground,
-              child: Row(
-                children: [
-                  const Icon(Icons.attach_file, color: AppColors.primary, size: 20),
-                  const SizedBox(width: 8),
-                  const Expanded(child: Text("ملف مرفق جاهز للإرسال", style: TextStyle(color: Colors.white70))),
-                  IconButton(
-                    icon: const Icon(Icons.close, color: AppColors.danger, size: 20),
-                    onPressed: () => setState(() => _attachedFileContent = null),
-                  )
-                ],
-              ),
-            ),
           _buildInputArea(),
         ],
       ),
@@ -299,58 +286,13 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Widget _buildEmptyState() {
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.auto_awesome, size: 60, color: AppColors.primary),
-            const SizedBox(height: 20),
-            const Text(
-              "كيف يمكنني مساعدتك اليوم؟",
-              style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 30),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              alignment: WrapAlignment.center,
-              children: [
-                _buildSuggestionChip(Icons.image, "وصف صورة", "قم بوصف هذه الصورة"),
-                _buildSuggestionChip(Icons.picture_as_pdf, "تلخيص PDF", "قم بتلخيص هذا المستند"),
-                _buildSuggestionChip(Icons.code, "شرح كود", "قم بشرح هذا الكود البرمجي"),
-                _buildSuggestionChip(Icons.lightbulb, "أفكار إبداعية", "أعطني أفكاراً إبداعية لمشروع"),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSuggestionChip(IconData icon, String title, String prompt) {
-    return InkWell(
-      onTap: () {
-        setState(() {
-          _controller.text = prompt;
-        });
-      },
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: AppColors.cardBackground,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.white.withOpacity(0.05)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: AppColors.primary, size: 18),
-            const SizedBox(width: 8),
-            Text(title, style: const TextStyle(color: Colors.white, fontSize: 14)),
-          ],
-        ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.auto_awesome, size: 60, color: AppColors.primary),
+          const SizedBox(height: 20),
+          const Text("كيف يمكنني مساعدتك اليوم؟", style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+        ],
       ),
     );
   }
@@ -419,46 +361,59 @@ class _ChatScreenState extends State<ChatScreen> {
               IconButton(
                 icon: const Icon(Icons.attach_file, color: AppColors.textSecondary),
                 onPressed: _pickFile,
-                tooltip: "رفع ملف",
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.white12),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Row(
-                  children: [
-                    Icon(widget.agent.icon, size: 14, color: AppColors.primary),
-                    const SizedBox(width: 6),
-                    Text(widget.agent.name, style: const TextStyle(color: Colors.white70, fontSize: 12)),
-                  ],
+              
+              // قائمة اختيار المهارة
+              GestureDetector(
+                onTap: () {
+                  showModalBottomSheet(
+                    context: context,
+                    backgroundColor: AppColors.cardBackground,
+                    builder: (context) => ListView(
+                      shrinkWrap: true,
+                      children: [
+                        const ListTile(title: Text("اختر مهارة", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+                        ListTile(
+                          title: const Text("بدون مهارة", style: TextStyle(color: Colors.grey)),
+                          onTap: () { setState(() => _selectedSkill = null); Navigator.pop(context); },
+                        ),
+                        ..._skills.map((skill) => ListTile(
+                          leading: const Icon(Icons.extension, color: AppColors.primary),
+                          title: Text(skill.name, style: const TextStyle(color: Colors.white)),
+                          onTap: () { setState(() => _selectedSkill = skill); Navigator.pop(context); },
+                        )).toList(),
+                      ],
+                    ),
+                  );
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: _selectedSkill != null ? AppColors.primary : Colors.white12),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.extension, size: 14, color: _selectedSkill != null ? AppColors.primary : AppColors.textSecondary),
+                      const SizedBox(width: 6),
+                      Text(_selectedSkill?.name ?? "مهارة", style: TextStyle(color: _selectedSkill != null ? Colors.white : AppColors.textSecondary, fontSize: 12)),
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
               IconButton(
                 icon: const Icon(Icons.tune, color: AppColors.textSecondary),
                 onPressed: _showSettingsDialog,
-                tooltip: "إعدادات متقدمة",
               ),
               const Spacer(),
-              IconButton(
-                icon: const Icon(Icons.mic, color: AppColors.textSecondary),
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("ميزة الإدخال الصوتي قيد التطوير...")));
-                },
-              ),
               Container(
                 decoration: const BoxDecoration(
                   color: AppColors.primary,
                   shape: BoxShape.circle,
                 ),
                 child: IconButton(
-                  icon: Icon(
-                    _isLoading ? Icons.stop : Icons.arrow_upward, 
-                    color: Colors.white, 
-                    size: 20
-                  ),
+                  icon: Icon(_isLoading ? Icons.stop : Icons.arrow_upward, color: Colors.white, size: 20),
                   onPressed: _isLoading ? _stopGeneration : _sendMessage,
                 ),
               ),
