@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import '../theme.dart';
 import 'provider_manager_screen.dart';
-import 'skills_screen.dart'; // استيراد شاشة المهارات
+import 'skills_screen.dart';
 import '../update_service.dart';
 import '../notification_service.dart';
+import '../model_manager.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -14,17 +15,33 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   bool _isUpdating = false;
-  double _progress = 0.0;
+  double _updateProgress = 0.0;
+
+  final ModelManager _modelManager = ModelManager();
+  bool _isDownloadingModel = false;
+  double _modelProgress = 0.0;
+  bool _isModelReady = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkModelStatus();
+  }
+
+  Future<void> _checkModelStatus() async {
+    File? file = await _modelManager.getModelFile();
+    setState(() => _isModelReady = file != null);
+  }
 
   void _handleUpdate() async {
     setState(() {
       _isUpdating = true;
-      _progress = 0.0;
+      _updateProgress = 0.0;
     });
 
     UpdateService updateService = UpdateService();
     String status = await updateService.checkAndUpdate((progress) {
-      setState(() => _progress = progress);
+      setState(() => _updateProgress = progress);
     });
 
     if (mounted) {
@@ -41,6 +58,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
       } else if (status == "success") {
          NotificationService.showNotification("تحديث AI HUB", "تم تحميل النسخة الجديدة بنجاح، جاري التثبيت...");
       }
+    }
+  }
+
+  void _downloadLocalModel() async {
+    setState(() {
+      _isDownloadingModel = true;
+      _modelProgress = 0.0;
+    });
+
+    try {
+      await _modelManager.downloadModel((progress) {
+        setState(() => _modelProgress = progress);
+      });
+      setState(() {
+        _isDownloadingModel = false;
+        _isModelReady = true;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("تم تحميل الموديل المحلي بنجاح!"), backgroundColor: AppColors.success),
+      );
+    } catch (e) {
+      setState(() => _isDownloadingModel = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("فشل التحميل: $e"), backgroundColor: AppColors.danger),
+      );
     }
   }
 
@@ -83,6 +125,47 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               const SizedBox(height: 25),
 
+              // قسم الموديل المحلي
+              Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(color: AppColors.cardBackground, borderRadius: BorderRadius.circular(15)),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Row(
+                      children: [
+                        Icon(Icons.offline_bolt, color: AppColors.primary),
+                        SizedBox(width: 10),
+                        Text("الموديل المحلي (العمل بدون إنترنت)", style: TextStyle(color: Colors.white, fontSize: 16)),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    if (_isDownloadingModel) ...[
+                      LinearProgressIndicator(value: _modelProgress, color: AppColors.primary),
+                      const SizedBox(height: 5),
+                      Text("${(_modelProgress * 100).toStringAsFixed(1)}%", style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                    ] else if (_isModelReady) ...[
+                      const Text("الموديل جاهز للاستخدام.", style: TextStyle(color: AppColors.success, fontSize: 14)),
+                      const SizedBox(height: 10),
+                      const Text("للاستخدام: اذهب إلى إدارة المزودين، أضف مزوداً جديداً واختر النوع (Local) بدون مفتاح API.", style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                    ] else ...[
+                      const Text("قم بتحميل الموديل (1.67 جيجا) لاستخدامه بدون إنترنت.", style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: _downloadLocalModel,
+                          icon: const Icon(Icons.download),
+                          label: const Text("تحميل الموديل المحلي"),
+                          style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
+                        ),
+                      )
+                    ]
+                  ],
+                ),
+              ),
+
               GestureDetector(
                 onTap: _isUpdating ? null : _handleUpdate,
                 child: Container(
@@ -100,9 +183,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             const Text("تحديث التطبيق لأحدث نسخة", style: TextStyle(color: Colors.white, fontSize: 16)),
                             if (_isUpdating) ...[
                               const SizedBox(height: 8),
-                              LinearProgressIndicator(value: _progress > 0 ? _progress : null, color: AppColors.primary),
+                              LinearProgressIndicator(value: _updateProgress > 0 ? _updateProgress : null, color: AppColors.primary),
                               const SizedBox(height: 4),
-                              Text("${(_progress * 100).toStringAsFixed(1)}%", style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                              Text("${(_updateProgress * 100).toStringAsFixed(1)}%", style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
                             ]
                           ],
                         ),
@@ -113,31 +196,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ),
 
-              // زر المهارات
               _buildSettingItem(
                 context,
                 Icons.extension, 
                 "إدارة المهارات (Skills)",
-                onTap: () {
-                  Navigator.push(context, MaterialPageRoute(builder: (context) => const SkillsScreen()));
-                }
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const SkillsScreen()))
               ),
-
               _buildSettingItem(
                 context,
                 Icons.key, 
                 "API Keys & Connections",
-                onTap: () {
-                  Navigator.push(context, MaterialPageRoute(builder: (context) => const ProviderManagerScreen()));
-                }
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const ProviderManagerScreen()))
               ),
               _buildSettingItem(
                 context, 
                 Icons.info, 
                 "About AI HUB",
-                onTap: () {
-                  showAboutDialog(context: context, applicationName: "AI HUB", applicationVersion: "1.0.0");
-                }
+                onTap: () => showAboutDialog(context: context, applicationName: "AI HUB", applicationVersion: "1.0.0")
               ),
             ],
           ),
