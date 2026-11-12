@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import '../theme.dart';
 import '../mcp_tools.dart';
+import '../export_service.dart'; // استدعاء خدمة التصدير
 
 class WorkspaceScreen extends StatefulWidget {
   const WorkspaceScreen({super.key});
@@ -14,6 +15,7 @@ class WorkspaceScreen extends StatefulWidget {
 class _WorkspaceScreenState extends State<WorkspaceScreen> {
   List<FileSystemEntity> _files = [];
   bool _isLoading = true;
+  bool _isExporting = false;
   String _baseDir = McpTools.baseDir;
 
   @override
@@ -27,9 +29,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     try {
       Directory dir = Directory(_baseDir);
       if (await dir.exists()) {
-        // جلب الملفات والمجلدات بشكل متداخل
         var entities = dir.listSync(recursive: true);
-        // تصفية لإظهار الملفات فقط (وليس المجلدات الفارغة)
         _files = entities.where((e) => e is File).toList();
       } else {
         _files = [];
@@ -57,7 +57,40 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
           initialContent: content,
         ),
       ),
-    ).then((_) => _loadFiles()); // تحديث القائمة عند العودة
+    ).then((_) => _loadFiles());
+  }
+
+  // دالة تصدير المشروع كملف ZIP
+  Future<void> _exportProject() async {
+    setState(() => _isExporting = true);
+    
+    String zipName = 'AI_HUB_Project_${DateTime.now().millisecondsSinceEpoch}.zip';
+    File? zipFile = await ExportService.zipProjectFolder(_baseDir, zipName);
+
+    setState(() => _isExporting = false);
+
+    if (zipFile != null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("تم تصدير المشروع بنجاح إلى: ${zipFile.path}"),
+            backgroundColor: AppColors.success,
+            duration: const Duration(seconds: 5),
+            action: SnackBarAction(
+              label: "مشاركة",
+              textColor: Colors.white,
+              onPressed: () => ExportService.shareZipFile(zipFile),
+            ),
+          ),
+        );
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("لا توجد ملفات لتصديرها، أو حدث خطأ."), backgroundColor: AppColors.danger),
+        );
+      }
+    }
   }
 
   @override
@@ -68,6 +101,14 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
         title: const Text("مساحة العمل (المشاريع)"),
         backgroundColor: AppColors.background,
         actions: [
+          if (_files.isNotEmpty)
+            IconButton(
+              icon: _isExporting 
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : const Icon(Icons.file_download, color: AppColors.success),
+              tooltip: "تصدير المشروع كملف ZIP",
+              onPressed: _isExporting ? null : _exportProject,
+            ),
           IconButton(
             icon: const Icon(Icons.refresh, color: Colors.white),
             onPressed: _loadFiles,
