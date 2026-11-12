@@ -1,13 +1,12 @@
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:dio/dio.dart';
-import 'web_search.dart'; // استدعاء أداة البحث
+import 'web_search.dart';
 
 class OnlineApiService {
   final Dio _dio = Dio();
   final WebSearch _webSearch = WebSearch();
 
-  // إضافة متغير useTools لتحديد ما إذا كنا سنسمح للموديل باستخدام الأدوات
   Stream<String> generateStream({
     required String provider,
     required String apiKey,
@@ -18,19 +17,18 @@ class OnlineApiService {
     bool useTools = false,
   }) async* {
     try {
-      // 1. تعريف الأداة التي سيستخدمها الموديل
       final List<Map<String, dynamic>> tools = [
         {
           "type": "function",
           "function": {
             "name": "web_search",
-            "description": "ابحث في الإنترنت عن معلومات حديثة أو أخبار أو طقس.",
+            "description": "ابحث في الإنترنت مرة واحدة فقط للحصول على المعلومات الحديثة.",
             "parameters": {
               "type": "object",
               "properties": {
                 "query": {
                   "type": "string",
-                  "description": "كلمة البحث بالإنجليزية (مثال: weather in Agadir)"
+                  "description": "كلمة البحث (مثال: weather in Agadir)"
                 }
               },
               "required": ["query"]
@@ -39,39 +37,35 @@ class OnlineApiService {
         }
       ];
 
-      // دالة داخلية لإرسال الطلب (لإعادة استخدامها عند استخدام الأدوات)
-      Future<Response> sendRequest(List<Map<String, dynamic>> messages, {bool isStream = true}) async {
-        return await _dio.post(
+      List<Map<String, dynamic>> messages = [
+        {'role': 'system', 'content': systemPrompt},
+        {'role': 'user', 'content': userPrompt},
+      ];
+
+      bool keepRunning = true;
+      int toolCallCount = 0; // عداد لمنع الموديل من تكرار البحث
+
+      while (keepRunning) {
+        keepRunning = false;
+        
+        final response = await _dio.post(
           '$baseUrl/chat/completions',
           options: Options(
             headers: {
               'Authorization': 'Bearer $apiKey',
               'Content-Type': 'application/json',
             },
-            responseType: isStream ? ResponseType.stream : ResponseType.json,
+            responseType: ResponseType.stream,
           ),
           data: jsonEncode({
             'model': modelName,
             'messages': messages,
             if (useTools) 'tools': tools,
             if (useTools) 'tool_choice': 'auto',
-            'stream': isStream,
+            'stream': true,
           }),
         );
-      }
 
-      List<Map<String, dynamic>> messages = [
-        {'role': 'system', 'content': systemPrompt},
-        {'role': 'user', 'content': userPrompt},
-      ];
-
-      // الحلقة (Loop): قد يطلب الموديل البحث، فنبحث، ثم نعيد الإرسال
-      bool keepRunning = true;
-      while (keepRunning) {
-        keepRunning = false; // نعود للـ false إلا إذا طلب الموديل أداة
-        final response = await sendRequest(messages);
-
-        // تجميع الستريم ومراقبة طلبات الأدوات
         final stream = response.data.stream as Stream<Uint8List>;
         final lineStream = stream.cast<List<int>>().transform(utf8.decoder).transform(const LineSplitter());
         
@@ -90,35 +84,27 @@ class OnlineApiService {
               if (data['choices'] != null && data['choices'].isNotEmpty) {
                 final delta = data['choices'][0]['delta'];
                 
-                // إذا كان الموديل يكتب نصاً عادياً
                 if (delta['content'] != null) {
                   currentText += delta['content'];
                   yield delta['content'];
                 }
                 
-                // إذا كان الموديل يطلب تنفيذ أداة (Function Call)
                 if (delta['tool_calls'] != null) {
                   isToolCall = true;
                   final toolCall = delta['tool_calls'][0];
-                  if (toolCall['function']['name'] != null) {
-                    toolCallName += toolCall['function']['name'];
-                  }
-                  if (toolCall['function']['arguments'] != null) {
-                    toolCallArgs += toolCall['function']['arguments'];
-                  }
+                  if (toolCall['function']['name'] != null) toolCallName += toolCall['function']['name'];
+                  if (toolCall['function']['arguments'] != null) toolCallArgs += toolCall['function']['arguments'];
                 }
               }
-            } catch (e) {
-              // تجاهل قطع JSON التالفة
-            }
+            } catch (e) {}
           }
         }
 
-        // بعد انتهاء الستريم، إذا طلب الموديل أداة
-        if (isToolCall && toolCallName == "web_search") {
+        // إذا طلب الموديل أداة، نتحقق من العداد
+        if (isToolCall && toolCallName == "web_search" && toolCallCount < 1) {
           keepRunning = true;
+          toolCallCount++; // زيادة العداد
           
-          // استخراج كلمة البحث من طلب الموديل
           String searchQuery = "";
           try {
             final args = jsonDecode(toolCallArgs);
@@ -126,13 +112,13 @@ class OnlineApiService {
           } catch(e) {}
 
           if (searchQuery.isNotEmpty) {
-            // 1. إبلاغ الواجهة أن الموديل يبحث
-            yield "\n\n> 🤖 *الموديل يقرر البحث في الإنترنت عن: $searchQuery...*\n\n";
+            yield "\n\n> 🔍 *جاري البحث في الإنترنت عن: $searchQuery...*\n\n";
             
-            // 2. تنفيذ البحث الحقيقي
+            // إضافة تأخير بسيط لتجنب الـ Rate Limit
+            await Future.delayed(const Duration(seconds: 1));
+            
             String searchResults = await _webSearch.search(searchQuery);
             
-            // 3. إضافة رد الموديل (الذي طلب الأداة) إلى تاريخ المحادثة
             messages.add({
               'role': 'assistant',
               'content': currentText,
@@ -145,24 +131,33 @@ class OnlineApiService {
               ]
             });
             
-            // 4. إضافة نتيجة البحث كرسالة من "الأداة" للموديل
             messages.add({
               'role': 'tool',
               'tool_call_id': 'call_123',
               'name': 'web_search',
               'content': searchResults,
             });
-            
-            // نترك الحلقة (While Loop) تكمل وتعيد الإرسال للموديل مع نتيجة البحث
+
+            // إضافة رسالة نظام صارمة للموديل
+            messages.add({
+              'role': 'system',
+              'content': "لقد قمت بالبحث بالفعل. الآن يجب عليك الإجابة على المستخدم مباشرة باستخدام نتائج البحث التي وصلتك. لا تطلب البحث مرة أخرى."
+            });
           }
         }
       }
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 429) {
+        yield "\n\n⚠️ **عذراً، لقد تجاوزت الحد الأقصى للطلبات المسموح بها في الدقيقة (Rate Limit).**\nيرجى الانتظار بضع ثوانٍ ثم المحاولة مرة أخرى.";
+      } else {
+        yield "\n\n❌ خطأ في الاتصال: ${e.message}";
+      }
     } catch (e) {
-      yield "\n\n❌ خطأ في الاتصال: $e";
+      yield "\n\n❌ خطأ غير متوقع: $e";
     }
   }
 
-  // دالة اختبار الاتصال (كما هي)
+  // دالة اختبار الاتصال (كما هي بدون تغيير)
   Future<String?> testConnection({
     required String provider,
     required String apiKey,
