@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'dart:io'; // <--- تم إضافة هذا الاستيراد
+import 'dart:io'; 
 import '../theme.dart';
 import 'provider_manager_screen.dart';
 import 'skills_screen.dart';
@@ -95,9 +95,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
           padding: const EdgeInsets.all(16),
           child: Column(
             children: [
+              // بطاقة المستخدم
               Container(
                 padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(color: AppColors.cardBackground, borderRadius: BorderRadius.circular(20)),
+                decoration: BoxDecoration(
+                  color: AppColors.cardBackground, 
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.white.withOpacity(0.05)),
+                ),
                 child: Row(
                   children: [
                     const CircleAvatar(
@@ -116,7 +121,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                             decoration: BoxDecoration(color: AppColors.primary.withOpacity(0.2), borderRadius: BorderRadius.circular(10)),
-                            child: const Text("Premium Plan", style: TextStyle(color: AppColors.primary, fontSize: 12)),
+                            child: const Text("Premium Plan", style: TextStyle(color: AppColors.primary, fontSize: 12, fontWeight: FontWeight.bold)),
                           )
                         ],
                       ),
@@ -126,40 +131,58 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               const SizedBox(height: 25),
 
-              // قسم الموديل المحلي
+              // قسم الموديل المحلي بتصميم أفضل
               Container(
-                margin: const EdgeInsets.only(bottom: 10),
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(color: AppColors.cardBackground, borderRadius: BorderRadius.circular(15)),
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: AppColors.cardBackground, 
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.white.withOpacity(0.05)),
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Row(
+                    Row(
                       children: [
-                        Icon(Icons.offline_bolt, color: AppColors.primary),
-                        SizedBox(width: 10),
-                        Text("الموديل المحلي (العمل بدون إنترنت)", style: TextStyle(color: Colors.white, fontSize: 16)),
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(color: AppColors.success.withOpacity(0.1), shape: BoxShape.circle),
+                          child: const Icon(Icons.offline_bolt, color: AppColors.success, size: 20),
+                        ),
+                        const SizedBox(width: 12),
+                        const Text("الموديل المحلي (بدون إنترنت)", style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
                       ],
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 12),
                     if (_isDownloadingModel) ...[
-                      LinearProgressIndicator(value: _modelProgress, color: AppColors.primary),
+                      const Text("جاري التحميل...", style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+                      const SizedBox(height: 8),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: LinearProgressIndicator(value: _modelProgress, color: AppColors.primary, minHeight: 8),
+                      ),
                       const SizedBox(height: 5),
-                      Text("${(_modelProgress * 100).toStringAsFixed(1)}%", style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                      Text("${(_modelProgress * 100).toStringAsFixed(1)}%", style: const TextStyle(color: AppColors.primary, fontSize: 12, fontWeight: FontWeight.bold)),
                     ] else if (_isModelReady) ...[
-                      const Text("الموديل جاهز للاستخدام.", style: TextStyle(color: AppColors.success, fontSize: 14)),
+                      const Text("الموديل جاهز للاستخدام أوفلاين.", style: TextStyle(color: AppColors.success, fontSize: 14)),
                       const SizedBox(height: 10),
-                      const Text("للاستخدام: اذهب إلى إدارة المزودين، أضف مزوداً جديداً واختر النوع (Local) بدون مفتاح API.", style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                      const Text("للاستخدام: أضف مزود خدمة جديد واختر النوع (Local).", style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
                     ] else ...[
-                      const Text("قم بتحميل الموديل (1.67 جيجا) لاستخدامه بدون إنترنت.", style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-                      const SizedBox(height: 10),
+                      const Text("قم بتحميل الموديل (1.67 جيجا) لاستخدامه بدون إنترنت.", style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+                      const SizedBox(height: 15),
                       SizedBox(
                         width: double.infinity,
+                        height: 45,
                         child: ElevatedButton.icon(
                           onPressed: _downloadLocalModel,
-                          icon: const Icon(Icons.download),
-                          label: const Text("تحميل الموديل المحلي"),
-                          style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
+                          icon: const Icon(Icons.download, size: 20),
+                          label: const Text("تحميل الموديل", style: TextStyle(fontWeight: FontWeight.bold)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primary,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
                         ),
                       )
                     ]
@@ -167,24 +190,36 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ),
 
+              // زر التحديث
               GestureDetector(
                 onTap: _isUpdating ? null : _handleUpdate,
                 child: Container(
-                  margin: const EdgeInsets.only(bottom: 10),
+                  margin: const EdgeInsets.only(bottom: 12),
                   padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(color: AppColors.cardBackground, borderRadius: BorderRadius.circular(15)),
+                  decoration: BoxDecoration(
+                    color: AppColors.cardBackground, 
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.white.withOpacity(0.05)),
+                  ),
                   child: Row(
                     children: [
-                      const Icon(Icons.update, color: AppColors.success),
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(color: AppColors.accentBlue.withOpacity(0.1), shape: BoxShape.circle),
+                        child: const Icon(Icons.update, color: AppColors.accentBlue, size: 20),
+                      ),
                       const SizedBox(width: 15),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text("تحديث التطبيق لأحدث نسخة", style: TextStyle(color: Colors.white, fontSize: 16)),
+                            const Text("تحديث التطبيق", style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
                             if (_isUpdating) ...[
                               const SizedBox(height: 8),
-                              LinearProgressIndicator(value: _updateProgress > 0 ? _updateProgress : null, color: AppColors.primary),
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(10),
+                                child: LinearProgressIndicator(value: _updateProgress > 0 ? _updateProgress : null, color: AppColors.primary, minHeight: 6),
+                              ),
                               const SizedBox(height: 4),
                               Text("${(_updateProgress * 100).toStringAsFixed(1)}%", style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
                             ]
@@ -226,11 +261,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        decoration: BoxDecoration(color: AppColors.cardBackground, borderRadius: BorderRadius.circular(15)),
+        margin: const EdgeInsets.only(bottom: 12),
+        decoration: BoxDecoration(
+          color: AppColors.cardBackground, 
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.white.withOpacity(0.05)),
+        ),
         child: ListTile(
-          leading: Icon(icon, color: AppColors.textSecondary),
-          title: Text(title, style: const TextStyle(color: Colors.white)),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          leading: Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), shape: BoxShape.circle),
+            child: Icon(icon, color: AppColors.textPrimary, size: 20),
+          ),
+          title: Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
           trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: AppColors.textSecondary),
         ),
       ),
