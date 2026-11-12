@@ -85,9 +85,11 @@ class OnlineApiService {
       if (e is DioException) {
         String errorMessage = "خطأ غير معروف";
         if (e.response != null && e.response!.data != null) {
+          // قراءة رسالة الخطأ الحقيقية من ResponseBody
           if (e.response!.data is ResponseBody) {
             final responseBody = e.response!.data as ResponseBody;
-            final bytes = await responseBody.stream.toBytes();
+            // الحل: استخدام fold بدلاً من toBytes()
+            final bytes = await responseBody.stream.fold<List<int>>(<int>[], (previous, element) => previous..addAll(element));
             errorMessage = utf8.decode(bytes);
           } else if (e.response!.data is String) {
             errorMessage = e.response!.data;
@@ -103,7 +105,6 @@ class OnlineApiService {
   }
 
   // دالة جديدة لفحص الاتصال قبل الحفظ
-  // ترجع null إذا كان الاتصال ناجحاً، أو نص الخطأ إذا فشل
   Future<String?> testConnection({
     required String provider,
     required String apiKey,
@@ -123,7 +124,7 @@ class OnlineApiService {
           ),
           data: jsonEncode({
             'model': modelName,
-            'max_tokens': 5, // طلب صغير جداً لتسريع الفحص
+            'max_tokens': 5,
             'messages': [{'role': 'user', 'content': 'Hi'}],
           }),
         );
@@ -149,7 +150,6 @@ class OnlineApiService {
       String msg = "خطأ غير معروف";
       if (e.response != null && e.response!.data != null) {
          if (e.response!.data is Map) {
-            // محاولة استخراج رسالة الخطأ من استجابة JSON
             msg = e.response!.data['error']?['message'] ?? e.response!.data['message'] ?? e.response!.data.toString();
          } else {
             msg = e.response!.data.toString();
