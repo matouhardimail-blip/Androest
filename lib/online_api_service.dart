@@ -37,14 +37,20 @@ class OnlineApiService {
         );
 
         final stream = response.data.stream as Stream<List<int>>;
-        await for (final chunk in stream) {
-          final lines = utf8.decode(chunk).split('\n');
-          for (final line in lines) {
-            if (line.startsWith('data: ') && line != 'data: [DONE]') {
-              final data = jsonDecode(line.substring(6));
-              if (data['type'] == 'content_block_delta' && data['delta']['text'] != null) {
+        // استخدام LineSplitter لتجميع القطع المقطوعة
+        final lineStream = stream.transform(utf8.decoder).transform(const LineSplitter());
+        
+        await for (final line in lineStream) {
+          if (line.startsWith('data: ') && line != 'data: [DONE]') {
+            final dataStr = line.substring(6).trim();
+            if (dataStr.isEmpty) continue;
+            try {
+              final data = jsonDecode(dataStr);
+              if (data['type'] == 'content_block_delta' && data['delta'] != null && data['delta']['text'] != null) {
                 yield data['delta']['text'];
               }
+            } catch (e) {
+              // تجاهل قطع JSON التالفة من الخادم
             }
           }
         }
@@ -69,14 +75,23 @@ class OnlineApiService {
         );
 
         final stream = response.data.stream as Stream<List<int>>;
-        await for (final chunk in stream) {
-          final lines = utf8.decode(chunk).split('\n');
-          for (final line in lines) {
-            if (line.startsWith('data: ') && line != 'data: [DONE]') {
-              final data = jsonDecode(line.substring(6));
-              if (data['choices'] != null && data['choices'][0]['delta']['content'] != null) {
+        // استخدام LineSplitter لتجميع القطع المقطوعة
+        final lineStream = stream.transform(utf8.decoder).transform(const LineSplitter());
+        
+        await for (final line in lineStream) {
+          if (line.startsWith('data: ') && line != 'data: [DONE]') {
+            final dataStr = line.substring(6).trim();
+            if (dataStr.isEmpty) continue;
+            try {
+              final data = jsonDecode(dataStr);
+              if (data['choices'] != null && 
+                  data['choices'].isNotEmpty && 
+                  data['choices'][0]['delta'] != null && 
+                  data['choices'][0]['delta']['content'] != null) {
                 yield data['choices'][0]['delta']['content'];
               }
+            } catch (e) {
+              // تجاهل قطع JSON التالفة من الخادم
             }
           }
         }
@@ -85,10 +100,8 @@ class OnlineApiService {
       if (e is DioException) {
         String errorMessage = "خطأ غير معروف";
         if (e.response != null && e.response!.data != null) {
-          // قراءة رسالة الخطأ الحقيقية من ResponseBody
           if (e.response!.data is ResponseBody) {
             final responseBody = e.response!.data as ResponseBody;
-            // الحل: استخدام fold بدلاً من toBytes()
             final bytes = await responseBody.stream.fold<List<int>>(<int>[], (previous, element) => previous..addAll(element));
             errorMessage = utf8.decode(bytes);
           } else if (e.response!.data is String) {
@@ -104,7 +117,6 @@ class OnlineApiService {
     }
   }
 
-  // دالة جديدة لفحص الاتصال قبل الحفظ
   Future<String?> testConnection({
     required String provider,
     required String apiKey,
