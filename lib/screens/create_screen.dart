@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import '../theme.dart';
 import '../models/agent_model.dart';
 import '../agent_manager.dart';
 import '../cloud_provider.dart';
 import '../online_api_service.dart';
+import '../mcp_tools.dart'; // استدعاء أدوات حفظ الملفات
+import 'workspace_screen.dart'; // استدعاء مساحة العمل
 
 class CreateScreen extends StatefulWidget {
   const CreateScreen({super.key});
@@ -23,9 +26,9 @@ class _CreateScreenState extends State<CreateScreen> {
   bool _isLoadingAgents = true;
   bool _isRunning = false;
   
-  // لتخزين سجل التنفيذ (الخطوات)
   List<Map<String, String>> _executionLog = [];
   String _finalResult = "";
+  List<String> _savedFiles = []; // لحفظ أسماء الملفات التي تم إنشاؤها
 
   @override
   void initState() {
@@ -67,16 +70,15 @@ class _CreateScreenState extends State<CreateScreen> {
       _isRunning = true;
       _executionLog.clear();
       _finalResult = "";
+      _savedFiles.clear();
     });
 
     String originalTask = _taskController.text.trim();
     String currentContext = originalTask;
 
-    // التشغيل المتسلسل (Sequential Execution)
     for (int i = 0; i < _selectedAgents.length; i++) {
       AgentModel agent = _selectedAgents[i];
       
-      // البحث عن مزود الخدمة المرتبط بالوكيل
       CloudProviderConfig? provider;
       try {
         provider = _providers.firstWhere((p) => p.id == agent.providerId);
@@ -84,7 +86,7 @@ class _CreateScreenState extends State<CreateScreen> {
         setState(() {
           _executionLog.add({'agent': agent.name, 'status': 'error', 'text': 'مزود الخدمة غير موجود.'});
         });
-        break; // نوقف العملية
+        break;
       }
 
       setState(() {
@@ -94,24 +96,27 @@ class _CreateScreenState extends State<CreateScreen> {
       int logIndex = _executionLog.length - 1;
       String agentOutput = "";
 
-      // تجهيز البرومبت بناءً على دور الوكيل في السلسلة
       String prompt = "";
       if (i == 0) {
         prompt = "أنت أول وكيل في فريق. المهمة الأساسية هي: '$originalTask'.\nقدم مساهمتك بناءً على دورك.";
       } else {
-        prompt = "المهمة الأساسية: '$originalTask'.\nهذا ما أنتجه الوكيل السابق:\n\n$currentContext\n\nبناءً على ما سبق، قدم مساهمتك كـ (${agent.name}) لاستكمال المهمة.";
+        // إذا كان هذا الوكيل هو الأخير، نطلب منه كتابة الأكواد بصيغة محددة ليتم حفظها
+        if (i == _selectedAgents.length - 1) {
+          prompt = "المهمة الأساسية: '$originalTask'.\nهذا ما أنتجه الوكيل السابق:\n\n$currentContext\n\nأنت الوكيل الأخير. مهمتك هي إخراج الأكواد النهائية للمشروع.\nيجب أن تكتب كل ملف بالصيغة التالية بالضبط حتى يتم حفظه:\n```[اللغة] [مسار/الملف]\n[الكود هنا]\n```\nمثال:\n```dart lib/main.dart\nvoid main() {}\n```";
+        } else {
+          prompt = "المهمة الأساسية: '$originalTask'.\nهذا ما أنتجه الوكيل السابق:\n\n$currentContext\n\nبناءً على ما سبق، قدم مساهمتك كـ (${agent.name}) لاستكمال المهمة.";
+        }
       }
 
-      // تشغيل الستريم وانتظار انتهائه
       bool success = await _executeAgentStream(agent, provider, prompt, (streamText) {
-        // تحديث الواجهة أثناء الكتابة
         setState(() {
           _executionLog[logIndex]['text'] = streamText;
         });
       });
 
       if (success) {
-        currentContext = agentOutput; // نمرر النتيجة للوكيل التالي
+        // تحديث السياق بالنص الذي أنتجه الوكيل
+        currentContext = _executionLog[logIndex]['text']!;
         setState(() {
           _executionLog[logIndex]['status'] = 'done';
         });
@@ -119,19 +124,42 @@ class _CreateScreenState extends State<CreateScreen> {
         setState(() {
           _executionLog[logIndex]['status'] = 'error';
         });
-        break; // نتوقف إذا فشل وكيل
+        break;
       }
     }
 
     setState(() {
       _isRunning = false;
       if (_executionLog.isNotEmpty && _executionLog.last['status'] == 'done') {
-        _finalResult = currentContext; // النتيجة النهائية هي مخرجات آخر وكيل
+        _finalResult = currentContext;
+        // محاولة استخراج وحفظ الملفات من النتيجة النهائية
+        _extractAndSaveFiles(_finalResult);
       }
     });
   }
 
-  // دالة مساعدة لتنفيذ وكيل واحد وانتظار انتهائه
+  // دالة استخراج الأكواد وحفظها في مساحة العمل
+  Future<void> _extractAndSaveFiles(String markdownText) async {
+    RegExp regExp = RegExp(r'```(\w+)?\s+([^\n\r]+)\r?\n([\s\S]*?)```');
+    Iterable<RegExpMatch> matches = regExp.allMatches(markdownText);
+
+    for (var match in matches) {
+      String? filePath = match.group(2)?.trim();
+      String? content = match.group(3);
+
+      if (filePath != null && content != null && filePath.contains('.')) {
+        filePath = filePath.replaceAll('`', '').trim();
+        String result = await McpTools.writeFile(filePath, content);
+        
+        if (result.contains("تم حفظ الملف")) {
+          setState(() {
+            _savedFiles.add(filePath!);
+          });
+        }
+      }
+    }
+  }
+
   Future<bool> _executeAgentStream(
     AgentModel agent, 
     CloudProviderConfig provider, 
@@ -182,7 +210,6 @@ class _CreateScreenState extends State<CreateScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // 1. إدخال المهمة
                     Container(
                       decoration: BoxDecoration(
                         color: AppColors.cardBackground,
@@ -194,7 +221,7 @@ class _CreateScreenState extends State<CreateScreen> {
                         enabled: !_isRunning,
                         style: const TextStyle(color: Colors.white),
                         decoration: const InputDecoration(
-                          hintText: "اكتب المهمة المعقدة هنا... (مثلاً: ابحث عن أفضل 3 هواتف في 2024، ثم قارن بينها)",
+                          hintText: "اكتب المهمة المعقدة هنا... (مثلاً: أنشئ تطبيق آلة حاسبة بواجهة جميلة)",
                           hintStyle: TextStyle(color: AppColors.textSecondary),
                           border: InputBorder.none,
                           contentPadding: EdgeInsets.all(16),
@@ -203,7 +230,6 @@ class _CreateScreenState extends State<CreateScreen> {
                     ),
                     const SizedBox(height: 20),
 
-                    // 2. اختيار الوكلاء
                     Text("اختر فريق العمل (بالتسلسل):", style: Theme.of(context).textTheme.titleMedium),
                     const SizedBox(height: 10),
                     if (_isLoadingAgents)
@@ -226,7 +252,6 @@ class _CreateScreenState extends State<CreateScreen> {
                       ),
                     const SizedBox(height: 20),
 
-                    // 3. زر التشغيل
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton.icon(
@@ -244,31 +269,54 @@ class _CreateScreenState extends State<CreateScreen> {
                     ),
                     const SizedBox(height: 20),
 
-                    // 4. سجل التنفيذ
                     if (_executionLog.isNotEmpty) ...[
                       Text("سجل التنفيذ:", style: Theme.of(context).textTheme.titleMedium),
                       const SizedBox(height: 10),
                       ..._executionLog.map((log) => _buildLogCard(log)).toList(),
                     ],
 
-                    // 5. النتيجة النهائية
-                    if (_finalResult.isNotEmpty) ...[
+                    // عرض الملفات التي تم حفظها بنجاح
+                    if (_savedFiles.isNotEmpty) ...[
                       const SizedBox(height: 20),
-                      Text("النتيجة النهائية:", style: Theme.of(context).textTheme.titleMedium?.copyWith(color: AppColors.success)),
-                      const SizedBox(height: 10),
                       Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
                           color: AppColors.success.withOpacity(0.1),
                           borderRadius: BorderRadius.circular(15),
-                          border: Border.all(color: AppColors.success.withOpacity(0.3)),
+                          border: Border.all(color: AppColors.success),
                         ),
-                        child: SelectableText(
-                          _finalResult,
-                          style: const TextStyle(color: Colors.white, fontSize: 15, height: 1.5),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Row(
+                              children: [
+                                Icon(Icons.check_circle, color: AppColors.success),
+                                SizedBox(width: 8),
+                                Text("تم إنشاء المشروع بنجاح!", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            ..._savedFiles.map((f) => Text("- $f", style: const TextStyle(color: Colors.white70, fontSize: 14))).toList(),
+                            const SizedBox(height: 15),
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton.icon(
+                                onPressed: () {
+                                  Navigator.push(context, MaterialPageRoute(builder: (context) => const WorkspaceScreen()));
+                                },
+                                icon: const Icon(Icons.folder_open),
+                                label: const Text("فتح مساحة العمل (Workspace)"),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.success,
+                                  foregroundColor: Colors.white,
+                                ),
+                              ),
+                            )
+                          ],
                         ),
                       ),
                     ],
+
                     const SizedBox(height: 40),
                   ],
                 ),
@@ -312,13 +360,14 @@ class _CreateScreenState extends State<CreateScreen> {
               if (isRunning) const Text("يعمل الآن...", style: TextStyle(color: AppColors.primary, fontSize: 12)),
             ],
           ),
-          if (log['text']!.isNotEmpty) ...[
+          if (log['text']!.isNotEmpty && !isDone) ...[
             const SizedBox(height: 10),
-            Text(
-              log['text']!,
-              style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
-              maxLines: isDone ? 3 : 10, // إظهار جزء من النص
-              overflow: TextOverflow.ellipsis,
+            MarkdownBody(
+              data: log['text']!,
+              styleSheet: MarkdownStyleSheet(
+                p: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                code: const TextStyle(backgroundColor: Colors.black45, color: Colors.greenAccent),
+              ),
             ),
           ]
         ],
