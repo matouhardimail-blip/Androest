@@ -1,8 +1,9 @@
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:dio/dio.dart';
-import 'package:intl/intl.dart'; // نحتاج هذه المكتبة للتنسيق (تأكد من وجودها في pubspec.yaml)
+import 'package:intl/intl.dart';
 import 'web_search.dart';
+import 'mcp_tools.dart'; // استدعاء أدوات MCP
 
 class OnlineApiService {
   final Dio _dio = Dio();
@@ -18,40 +19,64 @@ class OnlineApiService {
     bool useTools = false,
   }) async* {
     try {
+      // تعريف جميع الأدوات المتاحة للموديل
       final List<Map<String, dynamic>> tools = [
         {
           "type": "function",
           "function": {
             "name": "web_search",
-            "description": "أداة بحث حقيقية في الإنترنت. استخدمها دائماً للأخبار والطقس والمعلومات الحديثة.",
+            "description": "ابحث في الإنترنت عن معلومات حديثة أو أخبار.",
             "parameters": {
               "type": "object",
               "properties": {
-                "query": {
-                  "type": "string",
-                  "description": "كلمة البحث بالإنجليزية"
-                }
+                "query": {"type": "string", "description": "كلمة البحث"}
               },
               "required": ["query"]
+            }
+          }
+        },
+        {
+          "type": "function",
+          "function": {
+            "name": "write_file",
+            "description": "إنشاء أو تعديل ملف برمجي على جهاز المستخدم. استخدم هذا عند طلب كتابة كود أو إنشاء مشروع.",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "file_path": {"type": "string", "description": "مسار الملف (مثال: lib/main.dart)"},
+                "content": {"type": "string", "description": "الكود أو النص الكامل للملف"}
+              },
+              "required": ["file_path", "content"]
+            }
+          }
+        },
+        {
+          "type": "function",
+          "function": {
+            "name": "read_file",
+            "description": "قراءة محتوى ملف موجود على جهاز المستخدم.",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "file_path": {"type": "string", "description": "مسار الملف"}
+              },
+              "required": ["file_path"]
             }
           }
         }
       ];
 
-      // جلب تاريخ اليوم الحقيقي من هاتف المستخدم
       String currentDate = DateFormat('yyyy-MM-dd').format(DateTime.now());
 
-      // حقن تعليمات صارمة جداً
       String finalSystemPrompt = systemPrompt;
       if (useTools) {
         finalSystemPrompt += """
 
-\n\n[معلومات هامة جداً لك]:
-التاريخ اليوم هو: $currentDate. (أنت تعيش في هذا التاريخ، وتجاهل أي تاريخ آخر في ذاكرتك).
-أنت وكيل ذكي متصل بالإنترنت ولديك أداة بحث.
-يحظر عليك تماماً كتابة "لا يمكنني البحث" أو "تاريخ معرفتي قديم" أو "أنا لست متصلاً".
-إذا سألك المستخدم عن أخبار، طقس، أو أي شيء حديث، يجب عليك فوراً استخدام أداة (web_search).
-بعد أن تبحث، يجب أن تجيب المستخدم بناءً على النتائج. لا تعتذر أبداً.
+\n\n[تعليمات هامة جداً]:
+التاريخ اليوم هو: $currentDate.
+أنت وكيل ذكي ولديك أدوات (بحث، كتابة ملفات، قراءة ملفات).
+إذا طلب منك المستخدم كتابة كود أو إنشاء مشروع، يجب عليك استخدام أداة (write_file) فوراً لكل ملف.
+لا تكتفِ بكتابة الكود في الدردشة، بل استخدم الأداة ليتم حفظه على جهاز المستخدم.
 """;
       }
 
@@ -63,7 +88,7 @@ class OnlineApiService {
       bool keepRunning = true;
       int toolCallCount = 0;
 
-      while (keepRunning) {
+      while (keepRunning && toolCallCount < 3) { // حد أقصى 3 عمليات أدوات متتالية
         keepRunning = false;
         
         final response = await _dio.post(
@@ -80,7 +105,7 @@ class OnlineApiService {
             'messages': messages,
             if (useTools) 'tools': tools,
             if (useTools) 'tool_choice': 'auto',
-            'temperature': 0.1, // تقليل الإبداعية لزيادة الالتزام بالتعليمات
+            'temperature': 0.1,
             'stream': true,
           }),
         );
@@ -119,49 +144,62 @@ class OnlineApiService {
           }
         }
 
-        // تنفيذ البحث
-        if (isToolCall && toolCallName == "web_search" && toolCallCount < 1) {
+        // تنفيذ الأدوات
+        if (isToolCall) {
           keepRunning = true;
           toolCallCount++;
           
-          String searchQuery = "";
+          String toolResult = "";
+          yield "\n\n> ⚙️ *جاري تنفيذ الأداة: $toolCallName...*\n\n";
+          
+          await Future.delayed(const Duration(seconds: 1)); // تأخير بسيط
+
           try {
             final args = jsonDecode(toolCallArgs);
-            searchQuery = args['query'] ?? "";
-          } catch(e) {}
-
-          if (searchQuery.isNotEmpty) {
-            yield "\n\n> 🔍 *جاري البحث في الإنترنت عن: $searchQuery...*\n\n";
             
-            await Future.delayed(const Duration(seconds: 1));
-            
-            String searchResults = await _webSearch.search(searchQuery);
-            
-            messages.add({
-              'role': 'assistant',
-              'content': currentText.isEmpty ? null : currentText,
-              'tool_calls': [
-                {
-                  'id': 'call_123',
-                  'type': 'function',
-                  'function': {'name': toolCallName, 'arguments': toolCallArgs}
-                }
-              ]
-            });
-            
-            messages.add({
-              'role': 'tool',
-              'tool_call_id': 'call_123',
-              'name': 'web_search',
-              'content': searchResults,
-            });
-
-            // تعليمات ما بعد البحث (إجباره على الإجابة)
-            messages.add({
-              'role': 'system',
-              'content': "هذه نتائج البحث التي طلبتها. الآن أجب على المستخدم فوراً باللغة العربية. لا تعتذر ولا ترفض، استخدم النتائج."
-            });
+            if (toolCallName == "web_search") {
+              String query = args['query'] ?? "";
+              yield "\n\n> 🔍 *جاري البحث في الإنترنت عن: $query...*\n\n";
+              toolResult = await _webSearch.search(query);
+            } 
+            else if (toolCallName == "write_file") {
+              String path = args['file_path'] ?? "";
+              String content = args['content'] ?? "";
+              yield "\n\n> 💾 *جاري حفظ الملف: $path...*\n\n";
+              toolResult = await McpTools.writeFile(path, content);
+            }
+            else if (toolCallName == "read_file") {
+              String path = args['file_path'] ?? "";
+              yield "\n\n> 📖 *جاري قراءة الملف: $path...*\n\n";
+              toolResult = await McpTools.readFile(path);
+            }
+          } catch (e) {
+            toolResult = "خطأ في تنفيذ الأداة: $e";
           }
+          
+          messages.add({
+            'role': 'assistant',
+            'content': currentText.isEmpty ? null : currentText,
+            'tool_calls': [
+              {
+                'id': 'call_$toolCallCount',
+                'type': 'function',
+                'function': {'name': toolCallName, 'arguments': toolCallArgs}
+              }
+            ]
+          });
+          
+          messages.add({
+            'role': 'tool',
+            'tool_call_id': 'call_$toolCallCount',
+            'name': toolCallName,
+            'content': toolResult,
+          });
+
+          messages.add({
+            'role': 'system',
+            'content': "تم تنفيذ الأداة بنجاح. أكمل الإجابة أو نفذ الخطوة التالية."
+          });
         }
       }
     } on DioException catch (e) {
