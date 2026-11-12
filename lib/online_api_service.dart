@@ -18,7 +18,7 @@ class OnlineApiService {
     required String userPrompt,
     required List<Map<String, String>> chatHistory,
     bool useTools = false,
-    String? imageBase64, // <--- إضافة متغير للصورة
+    String? imageBase64, 
   }) async* {
     try {
       final List<Map<String, dynamic>> tools = [
@@ -98,7 +98,7 @@ class OnlineApiService {
         messages.add({
           'role': 'user',
           'content': [
-            {'type': 'text', 'text': userPrompt},
+            {'type': 'text', 'text': userPrompt.isEmpty ? "قم بوصف هذه الصورة" : userPrompt},
             {
               'type': 'image_url',
               'image_url': {
@@ -231,9 +231,22 @@ class OnlineApiService {
       }
     } on DioException catch (e) {
       if (e.response?.statusCode == 429) {
-        yield "\n\n⚠️ **الرجاء الانتظار بضع ثوانٍ.**";
+        yield "\n\n⚠️ **الرجاء الانتظار بضع ثوانٍ (تجاوزت الحد الأقصى للطلبات).**";
       } else {
-        yield "\n\n❌ خطأ في الاتصال: ${e.message}";
+        // استخراج رسالة الخطأ الحقيقية من الخادم
+        String serverMessage = "خطأ غير معروف";
+        if (e.response != null && e.response!.data != null) {
+          try {
+            if (e.response!.data is Map) {
+              serverMessage = e.response!.data['error']?['message'] ?? e.response!.data.toString();
+            } else if (e.response!.data is String) {
+              serverMessage = e.response!.data;
+            } else {
+              serverMessage = e.response!.data.toString();
+            }
+          } catch (_) {}
+        }
+        yield "\n\n❌ خطأ من الخادم (${e.response?.statusCode}):\n$serverMessage";
       }
     } catch (e) {
       yield "\n\n❌ خطأ غير متوقع: $e";
