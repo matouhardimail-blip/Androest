@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:file_selector/file_selector.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import '../theme.dart';
 import '../models/agent_model.dart';
@@ -15,7 +17,7 @@ import '../model_manager.dart';
 import '../notification_service.dart';
 import '../skill_manager.dart';
 import '../rag_service.dart';
-import '../pdf_service.dart'; // استدعاء خدمة PDF
+import '../pdf_service.dart';
 
 class ChatScreen extends StatefulWidget {
   final AgentModel agent;
@@ -34,6 +36,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final LocalLlamaService _localLlama = LocalLlamaService();
   final RagService _rag = RagService();
   final ModelManager _modelManager = ModelManager();
+  final ImagePicker _picker = ImagePicker();
   
   late ChatSession _currentSession;
   bool _isLoading = false;
@@ -42,6 +45,7 @@ class _ChatScreenState extends State<ChatScreen> {
   
   String? _attachedFileContent;
   List<String> _attachedFileChunks = [];
+  File? _attachedImage; // <--- لتخزين الصورة المرفقة
   
   StreamSubscription? _streamSubscription;
 
@@ -88,7 +92,7 @@ class _ChatScreenState extends State<ChatScreen> {
           await _localLlama.loadModel(modelFile.path);
         } else {
           setState(() {
-            _currentSession.messages.add(ChatMessageData(role: 'ai', text: '⚠️ الموديل المحلي غير محمل. يرجى تحميله من الإعدادات.'));
+            _currentSession.messages.add(ChatMessageData(role: 'ai', text: '⚠️ الموديل المحلي غير محمل.'));
           });
         }
       }
@@ -113,18 +117,15 @@ class _ChatScreenState extends State<ChatScreen> {
       if (file != null) {
         String content = "";
         
-        // التحقق مما إذا كان الملف PDF
         if (file.path.toLowerCase().endsWith('.pdf')) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text("جاري استخراج النص من ملف PDF...")),
           );
           content = await PdfService.extractText(File(file.path));
         } else {
-          // ملف نصي عادي
           content = await File(file.path).readAsString();
         }
         
-        // إذا كان الملف كبيراً، يتم تقسيمه لأجزاء
         if (content.length > 3000) {
           _attachedFileChunks = _rag.splitIntoChunks(content);
         } else {
@@ -146,14 +147,29 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  // دالة اختيار الصورة
+  Future<void> _pickImage() async {
+    try {
+      final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
+      if (image != null) {
+        setState(() {
+          _attachedImage = File(image.path);
+        });
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("فشل اختيار الصورة: $e")),
+      );
+    }
+  }
+
   void _sendMessage() async {
-    if (_controller.text.trim().isEmpty && _attachedFileContent == null) return;
+    if (_controller.text.trim().isEmpty && _attachedFileContent == null && _attachedImage == null) return;
     if (_providerConfig == null) return;
 
     String userText = _controller.text.trim();
     String finalPrompt = userText;
 
-    // معالجة الملف باستخدام RAG
     if (_attachedFileContent != null) {
       if (_attachedFileChunks.isNotEmpty) {
         List<String> relevantChunks = _rag.getRelevantChunks(userText, _attachedFileChunks);
@@ -162,6 +178,13 @@ class _ChatScreenState extends State<ChatScreen> {
       } else {
         finalPrompt = "محتوى الملف المرفق:\n$_attachedFileContent\n\nطلب المستخدم:\n$userText";
       }
+    }
+
+    // تحويل الصورة إلى Base64 إذا وجدت
+    String? imageBase64;
+    if (_attachedImage != null) {
+      final bytes = await _attachedImage!.readAsBytes();
+      imageBase64 = base64Encode(bytes);
     }
 
     List<Map<String, String>> chatHistory = _currentSession.messages
@@ -173,12 +196,15 @@ class _ChatScreenState extends State<ChatScreen> {
         _currentSession.title = userText.length > 25 ? userText.substring(0, 25) + "..." : userText;
       }
       
-      _currentSession.messages.add(ChatMessageData(role: 'user', text: userText.isEmpty ? "تم إرفاق ملف" : userText));
+      // عرض رسالة المستخدم مع الإشارة لوجود صورة
+      String userDisplayMsg = userText.isEmpty ? "تم إرفاق صورة/ملف" : userText;
+      _currentSession.messages.add(ChatMessageData(role: 'user', text: userDisplayMsg));
       _currentSession.messages.add(ChatMessageData(role: 'ai', text: '')); 
       _isLoading = true;
       _controller.clear();
       _attachedFileContent = null;
       _attachedFileChunks = [];
+      _attachedImage = null; // مسح الصورة بعد الإرسال
     });
     
     _saveHistory();
@@ -230,6 +256,7 @@ class _ChatScreenState extends State<ChatScreen> {
         userPrompt: finalPrompt,
         chatHistory: chatHistory,
         useTools: _isWebSearchEnabled,
+        imageBase64: imageBase64, // تمرير الصورة
       ).listen(
         (chunk) {
           currentResponse += chunk;
@@ -512,6 +539,31 @@ class _ChatScreenState extends State<ChatScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          // معاينة الصورة المرفقة
+          if (_attachedImage != null)
+            Container(
+              padding: const EdgeInsets.all(8),
+              margin: const EdgeInsets.only(bottom: 8),
+              decoration: BoxDecoration(
+                color: AppColors.background,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.file(_attachedImage!, width: 50, height: 50, fit: BoxFit.cover),
+                  ),
+                  const SizedBox(width: 10),
+                  const Expanded(child: Text("صورة جاهزة للإرسال", style: TextStyle(color: Colors.white70))),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: AppColors.danger, size: 20),
+                    onPressed: () => setState(() => _attachedImage = null),
+                  )
+                ],
+              ),
+            ),
+
           TextField(
             controller: _controller,
             style: const TextStyle(color: Colors.white, fontSize: 16),
@@ -525,9 +577,17 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
           Row(
             children: [
+              // زر الصورة
+              IconButton(
+                icon: const Icon(Icons.image, color: AppColors.textSecondary),
+                onPressed: _pickImage,
+                tooltip: "إرفاق صورة",
+              ),
+              // زر الملفات
               IconButton(
                 icon: const Icon(Icons.attach_file, color: AppColors.textSecondary),
                 onPressed: _pickFile,
+                tooltip: "إرفاق ملف",
               ),
               GestureDetector(
                 onTap: () {
