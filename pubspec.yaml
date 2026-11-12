@@ -24,7 +24,8 @@ dependencies:
   uuid: ^4.3.3
   flutter_local_notifications: ^17.2.2
   html: ^0.15.4
-  intl: ^0.19.0 # <--- المكتبة المضافة لجلب التاريخ
+  intl: ^0.19.0
+  syncfusion_flutter_pdf: ^26.2.14 # <--- أضفنا هذه المكتبة
 
 dev_dependencies:
   flutter_test:
