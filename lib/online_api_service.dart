@@ -36,9 +36,12 @@ class OnlineApiService {
           }),
         );
 
-        final stream = response.data.stream as Stream<List<int>>;
-        // استخدام LineSplitter لتجميع القطع المقطوعة
-        final lineStream = stream.transform(utf8.decoder).transform(const LineSplitter());
+        final stream = response.data.stream as Stream<Uint8List>;
+        // الحل: تحويل النوع صراحةً إلى List<int> قبل فك التشفير
+        final lineStream = stream
+            .cast<List<int>>()
+            .transform(utf8.decoder)
+            .transform(const LineSplitter());
         
         await for (final line in lineStream) {
           if (line.startsWith('data: ') && line != 'data: [DONE]') {
@@ -50,7 +53,7 @@ class OnlineApiService {
                 yield data['delta']['text'];
               }
             } catch (e) {
-              // تجاهل قطع JSON التالفة من الخادم
+              // تجاهل قطع JSON التالفة
             }
           }
         }
@@ -74,9 +77,12 @@ class OnlineApiService {
           }),
         );
 
-        final stream = response.data.stream as Stream<List<int>>;
-        // استخدام LineSplitter لتجميع القطع المقطوعة
-        final lineStream = stream.transform(utf8.decoder).transform(const LineSplitter());
+        final stream = response.data.stream as Stream<Uint8List>;
+        // الحل: تحويل النوع صراحةً إلى List<int> قبل فك التشفير
+        final lineStream = stream
+            .cast<List<int>>()
+            .transform(utf8.decoder)
+            .transform(const LineSplitter());
         
         await for (final line in lineStream) {
           if (line.startsWith('data: ') && line != 'data: [DONE]') {
@@ -91,7 +97,7 @@ class OnlineApiService {
                 yield data['choices'][0]['delta']['content'];
               }
             } catch (e) {
-              // تجاهل قطع JSON التالفة من الخادم
+              // تجاهل قطع JSON التالفة
             }
           }
         }
