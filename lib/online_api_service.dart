@@ -20,6 +20,7 @@ class OnlineApiService {
     bool useTools = false,
     String? imageBase64, 
   }) async* {
+    // ... (نفس الكود السابق بدون تغيير)
     try {
       final List<Map<String, dynamic>> tools = [
         {
@@ -71,12 +72,7 @@ class OnlineApiService {
 
       String finalSystemPrompt = systemPrompt;
       if (useTools) {
-        finalSystemPrompt += """
-
-\n\n[تعليمات هامة جداً]:
-التاريخ اليوم هو: $currentDate.
-أنت وكيل ذكي ولديك أدوات (بحث، كتابة ملفات، توليد صور).
-""";
+        finalSystemPrompt += "\n\n[تعليمات هامة جداً]:\nالتاريخ اليوم هو: $currentDate.\nأنت وكيل ذكي ولديك أدوات (بحث، كتابة ملفات، توليد صور).";
       }
 
       List<Map<String, dynamic>> messages = [
@@ -93,7 +89,6 @@ class OnlineApiService {
         });
       }
 
-      // إضافة الرسالة الحالية (مع الصورة إذا وجدت)
       if (imageBase64 != null) {
         messages.add({
           'role': 'user',
@@ -101,9 +96,7 @@ class OnlineApiService {
             {'type': 'text', 'text': userPrompt.isEmpty ? "قم بوصف هذه الصورة" : userPrompt},
             {
               'type': 'image_url',
-              'image_url': {
-                'url': 'data:image/jpeg;base64,$imageBase64'
-              }
+              'image_url': {'url': 'data:image/jpeg;base64,$imageBase64'}
             }
           ]
         });
@@ -233,7 +226,6 @@ class OnlineApiService {
       if (e.response?.statusCode == 429) {
         yield "\n\n⚠️ **الرجاء الانتظار بضع ثوانٍ (تجاوزت الحد الأقصى للطلبات).**";
       } else {
-        // استخراج رسالة الخطأ الحقيقية من الخادم
         String serverMessage = "خطأ غير معروف";
         if (e.response != null && e.response!.data != null) {
           try {
@@ -260,6 +252,7 @@ class OnlineApiService {
     required String modelName,
     required List<Map<String, String>> chatHistory,
   }) async {
+    // ... (نفس الكود السابق بدون تغيير)
     try {
       String historyText = chatHistory.map((m) => "${m['role'] == 'user' ? 'المستخدم' : 'المساعد'}: ${m['text']}").join('\n');
       
@@ -291,6 +284,7 @@ class OnlineApiService {
     required String baseUrl,
     required String modelName,
   }) async {
+    // ... (نفس الكود السابق بدون تغيير)
     try {
       if (provider.toLowerCase() == "anthropic") {
         final response = await _dio.post(
@@ -342,5 +336,67 @@ class OnlineApiService {
       return e.toString();
     }
     return "فشل الاتصال غير متوقع";
+  }
+
+  // الدالة الجديدة: توليد بيانات وكيل تلقائياً
+  Future<Map<String, String>?> generateAgentData({
+    required String provider,
+    required String apiKey,
+    required String baseUrl,
+    required String modelName,
+    required String userPrompt,
+  }) async {
+    try {
+      String metaPrompt = """
+أنت خبير في تصميم وكلاء الذكاء الاصطناعي. المستخدم يطلب وكيلاً متخصصاً في: "$userPrompt".
+قم بإنشاء بيانات هذا الوكيل وأخرجها بصيغة JSON فقط (بدون أي كلام آخر، وبدون علامات Markdown).
+استخدم هذا الهيكل بالضبط:
+{
+  "name": "اسم قصير ومميز للوكيل",
+  "description": "وصف قصير جداً للوكيل",
+  "systemPrompt": "التعليمات التفصيلية للوكيل (شخصيته، كيف يجيب، ما هي مهاراته، يجب أن يكون باللغة العربية)"
+}
+""";
+
+      final response = await _dio.post(
+        '$baseUrl/chat/completions',
+        options: Options(
+          headers: {
+            'Authorization': 'Bearer $apiKey',
+            'Content-Type': 'application/json',
+          },
+        ),
+        data: jsonEncode({
+          'model': modelName,
+          'messages': [
+            {'role': 'system', 'content': 'أنت مصمم وكلاء محترف. تخرج JSON فقط.'},
+            {'role': 'user', 'content': metaPrompt},
+          ],
+          'temperature': 0.2,
+        }),
+      );
+
+      String content = response.data['choices'][0]['message']['content'];
+      
+      // تنظيف النص من أي علامات Markdown قد يضيفها الموديل
+      content = content.replaceAll('```json', '').replaceAll('```', '').trim();
+      
+      // البحث عن أول قوس { وآخر قوس }
+      int start = content.indexOf('{');
+      int end = content.lastIndexOf('}');
+      if (start != -1 && end != -1) {
+        content = content.substring(start, end + 1);
+      }
+
+      final data = jsonDecode(content);
+      return {
+        'name': data['name']?.toString() ?? 'وكيل جديد',
+        'description': data['description']?.toString() ?? 'وكيل تم إنشاؤه تلقائياً',
+        'systemPrompt': data['systemPrompt']?.toString() ?? 'أنت مساعد ذكي.',
+      };
+    } catch (e) {
+      print("Error generating agent: $e");
+      return null;
+    }
   }
 }
