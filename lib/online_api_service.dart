@@ -9,6 +9,7 @@ class OnlineApiService {
   final Dio _dio = Dio();
   final WebSearch _webSearch = WebSearch();
 
+  // ... (باقي الدوال كما هي، سأضعها كاملة لضمان عدم وجود أخطاء)
   Stream<String> generateStream({
     required String provider,
     required String apiKey,
@@ -161,6 +162,7 @@ ${availableAgents.map((a) => "- ${a['id']} : ${a['name']} (${a['description']})"
     } catch (e) { return null; }
   }
 
+  // دالة محسنة لتوليد الفريق
   Future<List<Map<String, String>>?> generateAgentTeam({
     required String provider, required String apiKey, required String baseUrl, required String modelName,
     required String userPrompt, required int numberOfAgents,
@@ -170,24 +172,60 @@ ${availableAgents.map((a) => "- ${a['id']} : ${a['name']} (${a['description']})"
 أنت خبير في تصميم فرق وكلاء الذكاء الاصطناعي.
 المستخدم يطلب: "$userPrompt".
 مهمتك: إنشاء **$numberOfAgents وكلاء** متكاملين لهذا الفريق.
-أخرج النتيجة كمصفوفة JSON فقط (بدون أي كلام آخر).
-[
-  {"name": "اسم", "description": "وصف", "systemPrompt": "تعليمات بالعربية"}
-]
+يجب أن يكون المخرج كائن JSON (Object) يحتوي على مفتاح اسمه "agents" وهو مصفوفة، هكذا:
+{
+  "agents": [
+    {"name": "اسم الوكيل", "description": "وصف قصير جداً", "systemPrompt": "تعليمات تفصيلية باللغة العربية (شخصيته ومهامه)"}
+  ]
+}
+لا تكتب أي كلام خارج الـ JSON.
 """;
-      final response = await _dio.post('$baseUrl/chat/completions', options: Options(headers: {'Authorization': 'Bearer $apiKey', 'Content-Type': 'application/json'}), data: jsonEncode({'model': modelName, 'messages': [{'role': 'system', 'content': 'أنت مصمم وكلاء. تخرج مصفوفة JSON فقط.'}, {'role': 'user', 'content': metaPrompt}], 'temperature': 0.2}));
+      
+      final response = await _dio.post(
+        '$baseUrl/chat/completions', 
+        options: Options(
+          headers: {'Authorization': 'Bearer $apiKey', 'Content-Type': 'application/json'},
+          sendTimeout: const Duration(seconds: 30), // مهلة الإرسال
+          receiveTimeout: const Duration(seconds: 45), // مهلة الاستقبال
+        ), 
+        data: jsonEncode({
+          'model': modelName, 
+          'messages': [
+            {'role': 'system', 'content': 'أنت مصمم وكلاء محترف. تخرج JSON فقط.'}, 
+            {'role': 'user', 'content': metaPrompt}
+          ], 
+          'temperature': 0.2,
+          'response_format': {'type': 'json_object'} // إجبار الموديل على إخراج JSON
+        })
+      );
+      
       String content = response.data['choices'][0]['message']['content'].trim();
-      int start = content.indexOf('['); int end = content.lastIndexOf(']');
+      
+      // تنظيف النص
+      int start = content.indexOf('{'); 
+      int end = content.lastIndexOf('}');
+      
       if (start != -1 && end != -1) {
-        List<dynamic> jsonList = jsonDecode(content.substring(start, end + 1));
+        content = content.substring(start, end + 1);
+        final data = jsonDecode(content);
+        
+        List<dynamic> jsonList = data['agents']; // الوصول إلى المصفوفة داخل الكائن
         List<Map<String, String>> agents = [];
+        
         for (var item in jsonList) {
-          agents.add({'name': item['name']?.toString() ?? 'وكيل', 'description': item['description']?.toString() ?? '', 'systemPrompt': item['systemPrompt']?.toString() ?? ''});
+          agents.add({
+            'name': item['name']?.toString() ?? 'وكيل', 
+            'description': item['description']?.toString() ?? '', 
+            'systemPrompt': item['systemPrompt']?.toString() ?? ''
+          });
         }
         return agents;
       }
       return null;
-    } catch (e) { return null; }
+    } catch (e) {
+      print("Error generating team: $e");
+      return null;
+    }
   }
 
   Future<String> summarizeChat({required String provider, required String apiKey, required String baseUrl, required String modelName, required List<Map<String, String>> chatHistory}) async {
