@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'theme.dart';
 import 'notification_service.dart';
-import 'settings_manager.dart';
+import 'settings_manager.dart'; // استدعاء ملف الإعدادات
 import 'screens/home_screen.dart';
 import 'screens/agents_screen.dart';
 import 'screens/create_screen.dart';
@@ -20,9 +20,6 @@ void main() async {
   
   runApp(const MyApp());
 }
-
-// نستخدم ValueNotifier لتحديث الثيم فوراً عند تغييره من الإعدادات
-final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.dark);
 
 class MyApp extends StatefulWidget {
   const MyApp({super.key});
@@ -54,7 +51,7 @@ class _MyAppState extends State<MyApp> {
           theme: AppTheme.lightTheme,
           darkTheme: AppTheme.darkTheme,
           themeMode: currentMode,
-          home: const MainNavigation(),
+          home: const SplashScreen(),
         );
       },
     );
@@ -68,9 +65,6 @@ class SplashScreen extends StatefulWidget {
   @override
   State<SplashScreen> createState() => _SplashScreenState();
 }
-
-// ... (باقي كود شاشة SplashScreen و MainNavigation كما هو بدون تغيير)
-// سأضعه هنا للتأكد من عدم حدوث أخطاء.
 
 class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderStateMixin {
   late AnimationController _controller;
