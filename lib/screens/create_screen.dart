@@ -9,6 +9,7 @@ import '../cloud_provider.dart';
 import '../online_api_service.dart';
 import '../mcp_tools.dart'; 
 import '../workflow_manager.dart';
+import '../skill_manager.dart'; // لربط المهارات
 import 'workspace_screen.dart'; 
 
 class CreateScreen extends StatefulWidget {
@@ -20,18 +21,26 @@ class CreateScreen extends StatefulWidget {
 
 class _CreateScreenState extends State<CreateScreen> {
   final TextEditingController _taskController = TextEditingController();
+  final TextEditingController _interventionController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
   final OnlineApiService _api = OnlineApiService();
   
   List<AgentModel> _availableAgents = [];
   List<AgentModel> _selectedAgents = [];
   List<CloudProviderConfig> _providers = [];
+  List<Skill> _allSkills = [];
   
-  bool _isLoadingAgents = true;
-  bool _isRunning = false;
+  bool _isLoadingData = true;
+  bool _isGenerating = false;
+  bool _isAutoSelecting = false;
+  bool _workflowStarted = false;
   
-  List<Map<String, String>> _executionLog = [];
-  String _finalResult = "";
+  // متغيرات غرفة العمليات
+  int _currentAgentIndex = 0;
+  String _originalTask = "";
+  List<Map<String, String>> _chatLog = []; // سجل المحادثة بين الوكلاء والمستخدم
   List<String> _savedFiles = []; 
+  String _currentStreamingText = "";
 
   @override
   void initState() {
@@ -42,10 +51,12 @@ class _CreateScreenState extends State<CreateScreen> {
   Future<void> _loadData() async {
     _availableAgents = await AgentManager.loadAgents();
     _providers = await CloudConfigManager.loadProviders();
-    setState(() => _isLoadingAgents = false);
+    _allSkills = await SkillManager.loadSkills();
+    setState(() => _isLoadingData = false);
   }
 
   void _toggleAgentSelection(AgentModel agent) {
+    if (_workflowStarted) return;
     setState(() {
       if (_selectedAgents.contains(agent)) {
         _selectedAgents.remove(agent);
@@ -55,154 +66,220 @@ class _CreateScreenState extends State<CreateScreen> {
     });
   }
 
-  Future<void> _runWorkflow() async {
+  // دالة التنسيق التلقائي
+  Future<void> _autoOrchestrate() async {
     if (_taskController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("يرجى كتابة المهمة أولاً.")));
       return;
     }
-    if (_selectedAgents.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("يرجى اختيار وكيل واحد على الأقل.")));
-      return;
-    }
-    if (_providers.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("لا توجد مزودات خدمة. أضف مزوداً من الإعدادات.")));
-      return;
-    }
+    if (_providers.isEmpty) return;
 
-    setState(() {
-      _isRunning = true;
-      _executionLog.clear();
-      _finalResult = "";
-      _savedFiles.clear();
-    });
+    setState(() => _isAutoSelecting = true);
 
-    String originalTask = _taskController.text.trim();
-    String currentContext = originalTask;
-    bool hasError = false;
+    List<Map<String, String>> agentsData = _availableAgents.map((a) => {
+      'id': a.id, 'name': a.name, 'description': a.description,
+    }).toList();
 
-    for (int i = 0; i < _selectedAgents.length; i++) {
-      AgentModel agent = _selectedAgents[i];
-      
-      CloudProviderConfig? provider;
-      try {
-        provider = _providers.firstWhere((p) => p.id == agent.providerId);
-      } catch (e) {
-        setState(() {
-          _executionLog.add({'agent': agent.name, 'status': 'error', 'text': 'مزود الخدمة غير موجود.'});
-        });
-        hasError = true;
-        break;
-      }
+    CloudProviderConfig provider = _providers.first;
 
-      setState(() {
-        _executionLog.add({'agent': agent.name, 'status': 'running', 'text': 'جاري التفكير...'});
-      });
-
-      int logIndex = _executionLog.length - 1;
-
-      String prompt = "";
-      if (i == 0) {
-        prompt = "أنت أول وكيل في فريق. المهمة الأساسية هي: '$originalTask'.\nقدم مساهمتك بناءً على دورك.";
-      } else {
-        if (i == _selectedAgents.length - 1) {
-          prompt = "المهمة الأساسية: '$originalTask'.\nهذا ما أنتجه الوكيل السابق:\n\n$currentContext\n\nأنت الوكيل الأخير. مهمتك هي إخراج الأكواد النهائية للمشروع.\nيجب أن تكتب كل ملف بالصيغة التالية بالضبط حتى يتم حفظه:\n```[اللغة] [مسار/الملف]\n[الكود هنا]\n```\nمثال:\n```dart lib/main.dart\nvoid main() {}\n```";
-        } else {
-          prompt = "المهمة الأساسية: '$originalTask'.\nهذا ما أنتجه الوكيل السابق:\n\n$currentContext\n\nبناءً على ما سبق، قدم مساهمتك كـ (${agent.name}) لاستكمال المهمة.";
-        }
-      }
-
-      bool success = await _executeAgentStream(agent, provider, prompt, (streamText) {
-        setState(() {
-          _executionLog[logIndex]['text'] = streamText;
-        });
-      });
-
-      if (success) {
-        currentContext = _executionLog[logIndex]['text']!;
-        setState(() {
-          _executionLog[logIndex]['status'] = 'done';
-        });
-      } else {
-        setState(() {
-          _executionLog[logIndex]['status'] = 'error';
-        });
-        hasError = true;
-        break;
-      }
-    }
-
-    setState(() {
-      _isRunning = false;
-      if (_executionLog.isNotEmpty && _executionLog.last['status'] == 'done') {
-        _finalResult = currentContext;
-        _extractAndSaveFiles(_finalResult);
-      }
-    });
-
-    // حفظ المهمة في السجل
-    WorkflowModel wf = WorkflowModel(
-      id: const Uuid().v4(),
-      taskTitle: originalTask,
-      status: hasError ? 'failed' : 'completed',
-      timestamp: DateTime.now(),
-      finalResult: _finalResult.isEmpty ? "فشلت المهمة أو لم يتم إنتاج نتيجة." : _finalResult,
-      savedFiles: _savedFiles,
+    List<String>? selectedIds = await _api.autoSelectAgents(
+      provider: provider.providerType,
+      apiKey: provider.apiKey,
+      baseUrl: provider.baseUrl,
+      modelName: provider.modelName,
+      userTask: _taskController.text.trim(),
+      availableAgents: agentsData,
     );
-    await WorkflowManager.saveWorkflow(wf);
-  }
 
-  Future<void> _extractAndSaveFiles(String markdownText) async {
-    RegExp regExp = RegExp(r'```(\w+)?\s+([^\n\r]+)\r?\n([\s\S]*?)```');
-    Iterable<RegExpMatch> matches = regExp.allMatches(markdownText);
-
-    for (var match in matches) {
-      String? filePath = match.group(2)?.trim();
-      String? content = match.group(3);
-
-      if (filePath != null && content != null && filePath.contains('.')) {
-        filePath = filePath.replaceAll('`', '').trim();
-        String result = await McpTools.writeFile(filePath, content);
-        
-        if (result.contains("تم حفظ الملف")) {
-          setState(() {
-            _savedFiles.add(filePath!);
-          });
+    setState(() {
+      _isAutoSelecting = false;
+      if (selectedIds != null && selectedIds.isNotEmpty) {
+        _selectedAgents.clear();
+        for (String id in selectedIds) {
+          var agent = _availableAgents.firstWhere((a) => a.id == id, orElse: () => _availableAgents.first);
+          if (!_selectedAgents.contains(agent)) _selectedAgents.add(agent);
         }
       }
-    }
+    });
   }
 
-  Future<bool> _executeAgentStream(
-    AgentModel agent, 
-    CloudProviderConfig provider, 
-    String prompt, 
-    Function(String) onUpdate
-  ) async {
-    bool success = false;
-    String currentOutput = "";
+  // بدء سير العمل
+  void _startWorkflow() {
+    if (_taskController.text.trim().isEmpty || _selectedAgents.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("اكتب المهمة واختر الفريق أولاً.")));
+      return;
+    }
+
+    setState(() {
+      _workflowStarted = true;
+      _originalTask = _taskController.text.trim();
+      _chatLog.clear();
+      _savedFiles.clear();
+      _currentAgentIndex = 0;
+      _chatLog.add({'role': 'user', 'text': "المهمة الأساسية: $_originalTask"});
+    });
+
+    _runAgentStep(_currentAgentIndex);
+  }
+
+  // تشغيل وكيل معين
+  Future<void> _runAgentStep(int index) async {
+    if (index >= _selectedAgents.length) {
+      // انتهى الفريق
+      _finishWorkflow();
+      return;
+    }
+
+    AgentModel agent = _selectedAgents[index];
+    CloudProviderConfig? provider;
+    
+    try {
+      provider = _providers.firstWhere((p) => p.id == agent.providerId);
+    } catch (e) {
+      setState(() => _isGenerating = false);
+      _chatLog.add({'role': 'system', 'text': 'خطأ: مزود الخدمة للوكيل ${agent.name} غير موجود.'});
+      return;
+    }
+
+    setState(() {
+      _isGenerating = true;
+      _currentStreamingText = "";
+    });
+
+    // 1. بناء سياق المحادثة
+    String conversationContext = _chatLog.map((m) => "${m['role'] == 'user' ? 'المستخدم/المنسق' : m['role']}: ${m['text']}").join('\n\n');
+
+    // 2. تجهيز المهارات
+    List<String> agentSkills = _allSkills
+        .where((s) => agent.skillIds.contains(s.id))
+        .map((s) => s.systemPrompt)
+        .toList();
+    
+    String skillsPrompt = agentSkills.isNotEmpty ? "\n\n[مهاراتك الخاصة]:\n${agentSkills.join('\n\n')}" : "";
+
+    // 3. بناء البرومبت للوكيل
+    String prompt = """
+أنت (${agent.name})، ووصفك: ${agent.description}.
+أنت في اجتماع فريق متعدد الوكلاء. المهمة الأساسية هي: "$_originalTask".
+
+إليك ما دار في غرفة العمليات حتى الآن:
+$conversationContext
+
+مهمتك الآن: قدم مساهمتك المتخصصة بناءً على دورك وما دار في النقاش.
+- إذا احتجت معلومات، استخدم أداة البحث.
+- إذا كنت مطوراً، اكتب الأكواد بصيغة \`\`\`[اللغة] [المسار]\n[الكود]\n\`\`\` ليتم حفظها.
+- لا تعتذر، أنجز عملك وقدم النتيجة.
+""";
+
+    // 4. تشغيل الوكيل
+    String currentResponse = "";
+    bool isFirstToken = true;
+    
+    // إضافة فقاعة للوكيل في الواجهة
+    setState(() {
+      _chatLog.add({'role': agent.name, 'text': '...'});
+    });
+
+    int logIndex = _chatLog.length - 1;
 
     try {
-      final stream = _api.generateStream(
+      await for (final chunk in _api.generateStream(
         provider: provider.providerType,
         apiKey: provider.apiKey,
         baseUrl: provider.baseUrl,
         modelName: provider.modelName,
-        systemPrompt: agent.systemPrompt,
+        systemPrompt: agent.systemPrompt + skillsPrompt,
         userPrompt: prompt,
-        chatHistory: [], 
-      );
-
-      await for (final chunk in stream) {
-        currentOutput += chunk;
-        onUpdate(currentOutput);
+        chatHistory: [], // السياق مبني يدوياً في البرومبت
+        useTools: true, // تفعيل الأدوات للجميع
+      )) {
+        currentResponse += chunk;
+        setState(() {
+          _chatLog[logIndex]['text'] = currentResponse;
+        });
+        _scrollToBottom();
+        
+        // استخراج الملفات إن وجدت في هذا الرد
+        _extractFilesFromText(currentResponse);
       }
-      success = true;
-    } catch (e) {
-      onUpdate(currentOutput + "\n\n❌ خطأ: $e");
-      success = false;
-    }
+      
+      setState(() {
+        _isGenerating = false;
+        _currentAgentIndex++; // الانتقال للوكيل التالي
+        _currentStreamingText = "";
+      });
 
-    return success;
+    } catch (e) {
+      setState(() {
+        _isGenerating = false;
+        _chatLog[logIndex]['text'] = "❌ خطأ: $e";
+      });
+    }
+  }
+
+  // تدخل المستخدم وتمرير الكلمة للوكيل التالي
+  void _submitIntervention() {
+    if (_interventionController.text.trim().isEmpty) return;
+
+    setState(() {
+      _chatLog.add({'role': 'user', 'text': _interventionController.text.trim()});
+      _interventionController.clear();
+    });
+    _scrollToBottom();
+
+    // تشغيل الوكيل التالي فوراً
+    _runAgentStep(_currentAgentIndex);
+  }
+
+  void _finishWorkflow() {
+    setState(() {
+      _isGenerating = false;
+      _chatLog.add({'role': 'system', 'text': '✅ انتهى الاجتماع وتم إنتاج المشروع بنجاح.'});
+    });
+
+    // حفظ المهمة في السجل
+    String finalResult = _chatLog.lastWhere((m) => m['role'] != 'user' && m['role'] != 'system', orElse: () => {'text': 'لا يوجد'})['text']!;
+    
+    WorkflowModel wf = WorkflowModel(
+      id: const Uuid().v4(),
+      taskTitle: _originalTask,
+      status: 'completed',
+      timestamp: DateTime.now(),
+      finalResult: finalResult,
+      savedFiles: _savedFiles,
+      conversationLog: _chatLog,
+    );
+    WorkflowManager.saveWorkflow(wf);
+  }
+
+  Future<void> _extractFilesFromText(String text) async {
+    RegExp regExp = RegExp(r'```(\w+)?\s+([^\n\r]+)\r?\n([\s\S]*?)```');
+    Iterable<RegExpMatch> matches = regExp.allMatches(text);
+    for (var match in matches) {
+      String? filePath = match.group(2)?.trim();
+      String? content = match.group(3);
+      if (filePath != null && content != null && filePath.contains('.')) {
+        filePath = filePath.replaceAll('`', '').trim();
+        if (!_savedFiles.contains(filePath)) {
+          String result = await McpTools.writeFile(filePath, content);
+          if (result.contains("تم حفظ الملف")) {
+            setState(() => _savedFiles.add(filePath!));
+          }
+        }
+      }
+    }
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
   }
 
   @override
@@ -210,161 +287,99 @@ class _CreateScreenState extends State<CreateScreen> {
     return Scaffold(
       body: SafeArea(
         child: Column(
+          children: [
+            // شريط علوي
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      if (_workflowStarted) IconButton(icon: const Icon(Icons.arrow_back, color: Colors.white), onPressed: () => setState(() => _workflowStarted = false)),
+                      Text(_workflowStarted ? "غرفة عمليات الفريق" : "Multi-Agent Workspace", style: Theme.of(context).textTheme.headlineSmall),
+                    ],
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.folder_special, color: AppColors.primary),
+                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const WorkspaceScreen())),
+                  )
+                ],
+              ),
+            ),
+
+            // إذا لم يبدأ العمل: عرض إعداد الفريق
+            if (!_workflowStarted) _buildSetupView(),
+            
+            // إذا بدأ العمل: عرض غرفة العمليات
+            if (_workflowStarted) Expanded(child: _buildWarRoomView()),
+
+            // شريط الإدخال السفلي
+            if (_workflowStarted) _buildInterventionInput(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSetupView() {
+    return Expanded(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 20, 16, 10),
-              child: Text("Multi-Agent Workspace", style: Theme.of(context).textTheme.headlineMedium),
-            ),
-            
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // بطاقة إدخال المهمة
-                    Container(
-                      decoration: BoxDecoration(
-                        color: AppColors.cardBackground,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: Colors.white.withOpacity(0.05)),
-                      ),
-                      child: TextField(
-                        controller: _taskController,
-                        maxLines: 4,
-                        enabled: !_isRunning,
-                        style: const TextStyle(color: Colors.white, fontSize: 16),
-                        decoration: const InputDecoration(
-                          hintText: "اكتب المهمة المعقدة هنا...\n(مثلاً: أنشئ تطبيق آلة حاسبة بواجهة جميلة)",
-                          hintStyle: TextStyle(color: AppColors.textSecondary),
-                          border: InputBorder.none,
-                          contentPadding: EdgeInsets.all(20),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 25),
-
-                    Row(
-                      children: [
-                        const Icon(Icons.group, color: AppColors.primary, size: 20),
-                        const SizedBox(width: 8),
-                        Text("اختر فريق العمل (بالتسلسل):", style: Theme.of(context).textTheme.titleMedium),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    
-                    if (_isLoadingAgents)
-                      const Center(child: CircularProgressIndicator())
-                    else if (_availableAgents.isEmpty)
-                      const Text("لا يوجد وكلاء. أضف وكلاء من الشاشة السابقة.", style: TextStyle(color: AppColors.danger))
-                    else
-                      Wrap(
-                        spacing: 10,
-                        runSpacing: 10,
-                        children: _availableAgents.map((agent) {
-                          bool isSelected = _selectedAgents.contains(agent);
-                          return FilterChip(
-                            label: Text(agent.name, style: TextStyle(color: isSelected ? Colors.white : AppColors.textSecondary, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
-                            selected: isSelected,
-                            selectedColor: AppColors.primary,
-                            backgroundColor: AppColors.cardBackground,
-                            checkmarkColor: Colors.white,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: isSelected ? Colors.transparent : Colors.white12)),
-                            onSelected: _isRunning ? null : (_) => _toggleAgentSelection(agent),
-                          );
-                        }).toList(),
-                      ),
-                    const SizedBox(height: 30),
-
-                    // زر التشغيل
-                    SizedBox(
-                      width: double.infinity,
-                      height: 55,
-                      child: ElevatedButton.icon(
-                        onPressed: _isRunning ? null : _runWorkflow,
-                        icon: _isRunning 
-                          ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                          : const Icon(Icons.rocket_launch),
-                        label: Text(_isRunning ? "جاري التنفيذ..." : "بدء سير العمل", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primary,
-                          disabledBackgroundColor: AppColors.primary.withOpacity(0.5),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                          elevation: 0,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 30),
-
-                    if (_executionLog.isNotEmpty) ...[
-                      Row(
-                        children: [
-                          const Icon(Icons.terminal, color: AppColors.accentBlue, size: 20),
-                          const SizedBox(width: 8),
-                          Text("سجل التنفيذ:", style: Theme.of(context).textTheme.titleMedium),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      ..._executionLog.map((log) => _buildLogCard(log)).toList(),
-                    ],
-
-                    if (_savedFiles.isNotEmpty) ...[
-                      const SizedBox(height: 20),
-                      Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: AppColors.success.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: AppColors.success.withOpacity(0.5)),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Row(
-                              children: [
-                                Icon(Icons.check_circle, color: AppColors.success),
-                                SizedBox(width: 10),
-                                Text("تم إنشاء المشروع بنجاح!", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
-                              ],
-                            ),
-                            const SizedBox(height: 15),
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(10)),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: _savedFiles.map((f) => Padding(
-                                  padding: const EdgeInsets.only(bottom: 4),
-                                  child: Text("📄 $f", style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
-                                )).toList(),
-                              ),
-                            ),
-                            const SizedBox(height: 20),
-                            SizedBox(
-                              width: double.infinity,
-                              child: ElevatedButton.icon(
-                                onPressed: () {
-                                  Navigator.push(context, MaterialPageRoute(builder: (context) => const WorkspaceScreen()));
-                                },
-                                icon: const Icon(Icons.folder_open),
-                                label: const Text("فتح مساحة العمل (Workspace)"),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: AppColors.success,
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(vertical: 14),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                ),
-                              ),
-                            )
-                          ],
-                        ),
-                      ),
-                    ],
-
-                    const SizedBox(height: 40),
-                  ],
+            Container(
+              decoration: BoxDecoration(
+                color: AppColors.cardBackground,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: TextField(
+                controller: _taskController,
+                maxLines: 3,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                  hintText: "اكتب المهمة المعقدة...",
+                  hintStyle: TextStyle(color: AppColors.textSecondary),
+                  border: InputBorder.none,
+                  contentPadding: EdgeInsets.all(20),
                 ),
+              ),
+            ),
+            const SizedBox(height: 15),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _isAutoSelecting ? null : _autoOrchestrate,
+                icon: _isAutoSelecting ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.auto_awesome, color: AppColors.amber),
+                label: const Text("تنسيق تلقائي (Auto-Orchestrate)", style: TextStyle(color: AppColors.amber)),
+                style: OutlinedButton.styleFrom(side: const BorderSide(color: AppColors.amber)),
+              ),
+            ),
+            const SizedBox(height: 25),
+            Text("الفريق (بالتسلسل):", style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8, runSpacing: 8,
+              children: _availableAgents.map((agent) {
+                bool isSelected = _selectedAgents.contains(agent);
+                return FilterChip(
+                  label: Text(agent.name, style: TextStyle(color: isSelected ? Colors.white : Colors.grey)),
+                  selected: isSelected,
+                  selectedColor: AppColors.primary,
+                  backgroundColor: AppColors.cardBackground,
+                  onSelected: (_) => _toggleAgentSelection(agent),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 30),
+            SizedBox(
+              width: double.infinity, height: 55,
+              child: ElevatedButton.icon(
+                onPressed: _startWorkflow,
+                icon: const Icon(Icons.forum),
+                label: const Text("بدء الاجتماع", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
               ),
             ),
           ],
@@ -373,48 +388,114 @@ class _CreateScreenState extends State<CreateScreen> {
     );
   }
 
-  Widget _buildLogCard(Map<String, String> log) {
-    bool isRunning = log['status'] == 'running';
-    bool isDone = log['status'] == 'done';
-    bool isError = log['status'] == 'error';
+  Widget _buildWarRoomView() {
+    return ListView.builder(
+      controller: _scrollController,
+      padding: const EdgeInsets.all(16),
+      itemCount: _chatLog.length,
+      itemBuilder: (context, index) {
+        final msg = _chatLog[index];
+        bool isUser = msg['role'] == 'user' || msg['role'] == 'system';
+        String senderName = isUser ? 'أنت (المنسق)' : msg['role']!;
+
+        if (msg['role'] == 'system') {
+          return Center(
+            child: Container(
+              margin: const EdgeInsets.symmetric(vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(color: AppColors.success.withOpacity(0.2), borderRadius: BorderRadius.circular(20)),
+              child: Text(msg['text']!, style: const TextStyle(color: AppColors.success)),
+            ),
+          );
+        }
+
+        return Align(
+          alignment: isUser ? Alignment.centerLeft : Alignment.centerRight,
+          child: Container(
+            margin: const EdgeInsets.only(bottom: 16),
+            padding: const EdgeInsets.all(16),
+            constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.85),
+            decoration: BoxDecoration(
+              color: isUser ? AppColors.primary : AppColors.cardBackground,
+              borderRadius: BorderRadius.only(
+                topLeft: const Radius.circular(16), topRight: const Radius.circular(16),
+                bottomLeft: Radius.circular(isUser ? 0 : 16), bottomRight: Radius.circular(isUser ? 16 : 0),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (!isUser) ...[
+                  Text(senderName, style: const TextStyle(color: AppColors.amber, fontWeight: FontWeight.bold, fontSize: 12)),
+                  const SizedBox(height: 6),
+                ],
+                MarkdownBody(
+                  data: msg['text']!,
+                  styleSheet: MarkdownStyleSheet(
+                    p: const TextStyle(color: Colors.white, fontSize: 15),
+                    code: const TextStyle(backgroundColor: Colors.black45, color: Colors.greenAccent),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildInterventionInput() {
+    // إذا كان الوكيل يعمل الآن، لا يمكن للمستخدم الكتابة
+    bool canIntervene = !_isGenerating && _currentAgentIndex < _selectedAgents.length;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
+      padding: const EdgeInsets.all(12),
+      decoration: const BoxDecoration(
         color: AppColors.cardBackground,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isRunning ? AppColors.primary : (isDone ? AppColors.success : (isError ? AppColors.danger : Colors.transparent)),
-          width: 1.5,
-        ),
+        border: Border(top: BorderSide(color: Colors.white10)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (_isGenerating)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8.0, right: 8.0),
+              child: Text("الوكيل (${_selectedAgents[_currentAgentIndex].name}) يعمل الآن...", style: const TextStyle(color: AppColors.primary, fontSize: 12)),
+            )
+          else if (canIntervene)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8.0, right: 8.0),
+              child: Text("دور الوكيل التالي (${_selectedAgents[_currentAgentIndex].name}). اكتب توجيهاتك أو اضغط إرسال للمتابعة.", style: const TextStyle(color: AppColors.amber, fontSize: 12)),
+            ),
+
           Row(
             children: [
-              Icon(
-                isRunning ? Icons.sync : (isDone ? Icons.check_circle : (isError ? Icons.error : Icons.circle)),
-                color: isRunning ? AppColors.primary : (isDone ? AppColors.success : (isError ? AppColors.danger : Colors.grey)),
-                size: 22,
+              Expanded(
+                child: TextField(
+                  controller: _interventionController,
+                  enabled: canIntervene,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    hintText: "اكتب توجيهك للفريق هنا...",
+                    hintStyle: const TextStyle(color: AppColors.textSecondary),
+                    filled: true,
+                    fillColor: AppColors.background,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  ),
+                  onSubmitted: (_) => _submitIntervention(),
+                ),
               ),
-              const SizedBox(width: 10),
-              Text(log['agent']!, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-              const Spacer(),
-              if (isRunning) const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary)),
+              const SizedBox(width: 8),
+              CircleAvatar(
+                backgroundColor: canIntervene ? AppColors.primary : Colors.grey,
+                child: IconButton(
+                  icon: const Icon(Icons.send, color: Colors.white, size: 20),
+                  onPressed: canIntervene ? _submitIntervention : null,
+                ),
+              ),
             ],
           ),
-          if (log['text']!.isNotEmpty && !isDone) ...[
-            const SizedBox(height: 12),
-            MarkdownBody(
-              data: log['text']!,
-              styleSheet: MarkdownStyleSheet(
-                p: const TextStyle(color: AppColors.textSecondary, fontSize: 14, height: 1.5),
-                code: const TextStyle(backgroundColor: Colors.black45, color: Colors.greenAccent),
-              ),
-            ),
-          ]
         ],
       ),
     );
