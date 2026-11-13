@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'theme.dart';
 import 'notification_service.dart';
-import 'settings_manager.dart'; // استدعاء ملف الإعدادات
+import 'settings_manager.dart'; 
 import 'screens/home_screen.dart';
 import 'screens/agents_screen.dart';
 import 'screens/create_screen.dart';
@@ -58,7 +58,6 @@ class _MyAppState extends State<MyApp> {
   }
 }
 
-// شاشة البداية (Splash)
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -155,7 +154,7 @@ class _MainNavigationState extends State<MainNavigation> {
       floatingActionButton: FloatingActionButton(
         onPressed: () => _changeTab(2),
         backgroundColor: AppColors.primary,
-        elevation: 4,
+        elevation: 6,
         shape: const CircleBorder(),
         child: const Icon(Icons.add, color: Colors.white, size: 30),
       ),
@@ -163,17 +162,17 @@ class _MainNavigationState extends State<MainNavigation> {
       bottomNavigationBar: BottomAppBar(
         color: AppColors.cardBackground.withOpacity(0.95),
         shape: const CircularNotchedRectangle(),
-        notchMargin: 8.0,
+        notchMargin: 10.0,
         child: SizedBox(
-          height: 60,
+          height: 65,
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              _buildNavItem(Icons.home_outlined, Icons.home, 'Home', 0),
-              _buildNavItem(Icons.smart_toy_outlined, Icons.smart_toy, 'Agents', 1),
+              _buildNavItem(Icons.home_outlined, Icons.home_rounded, 'Home', 0),
+              _buildNavItem(Icons.smart_toy_outlined, Icons.smart_toy_rounded, 'Agents', 1),
               const SizedBox(width: 40), 
-              _buildNavItem(Icons.hub_outlined, Icons.hub, 'Workflows', 3),
-              _buildNavItem(Icons.person_outline, Icons.person, 'Profile', 4),
+              _buildNavItem(Icons.hub_outlined, Icons.hub_rounded, 'Workflows', 3),
+              _buildNavItem(Icons.person_outline_rounded, Icons.person_rounded, 'Profile', 4),
             ],
           ),
         ),
@@ -185,11 +184,34 @@ class _MainNavigationState extends State<MainNavigation> {
     bool isSelected = _currentIndex == index;
     return GestureDetector(
       onTap: () => _changeTab(index),
+      behavior: HitTestBehavior.opaque,
       child: Column(
         mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(isSelected ? activeIcon : icon, color: isSelected ? AppColors.primary : AppColors.textSecondary),
-          Text(label, style: TextStyle(fontSize: 10, color: isSelected ? AppColors.primary : AppColors.textSecondary))
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            decoration: BoxDecoration(
+              color: isSelected ? AppColors.primary.withOpacity(0.15) : Colors.transparent,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Icon(
+              isSelected ? activeIcon : icon, 
+              color: isSelected ? AppColors.primary : AppColors.textSecondary,
+              size: isSelected ? 26 : 24,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label, 
+            style: TextStyle(
+              fontSize: 10, 
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              color: isSelected ? AppColors.primary : AppColors.textSecondary
+            )
+          )
         ],
       ),
     );
