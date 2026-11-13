@@ -224,7 +224,7 @@ class _AgentsScreenState extends State<AgentsScreen> {
                       const SizedBox(height: 20),
                       const Center(child: CircularProgressIndicator(color: AppColors.primary)),
                       const SizedBox(height: 10),
-                      const Center(child: Text("جاري بناء الفريق...", style: TextStyle(color: AppColors.primary, fontSize: 12))),
+                      const Center(child: Text("جاري بناء الفريق... قد يستغرق هذا 30 ثانية", style: TextStyle(color: AppColors.primary, fontSize: 12))),
                     ]
                   ],
                 ),
@@ -237,43 +237,53 @@ class _AgentsScreenState extends State<AgentsScreen> {
                     CloudProviderConfig provider = _providers.first;
                     OnlineApiService api = OnlineApiService();
                     
-                    // استدعاء الدالة الصحيحة
-                    List<Map<String, String>>? agentsData = await api.generateAgentTeam(
-                      provider: provider.providerType,
-                      apiKey: provider.apiKey,
-                      baseUrl: provider.baseUrl,
-                      modelName: provider.modelName,
-                      userPrompt: prompt,
-                      numberOfAgents: agentCount,
-                    );
+                    try {
+                      List<Map<String, String>>? agentsData = await api.generateAgentTeam(
+                        provider: provider.providerType,
+                        apiKey: provider.apiKey,
+                        baseUrl: provider.baseUrl,
+                        modelName: provider.modelName,
+                        userPrompt: prompt,
+                        numberOfAgents: agentCount,
+                      );
 
-                    if (agentsData != null && agentsData.isNotEmpty) {
-                      for (var data in agentsData) {
-                        _agents.add(AgentModel(
-                          id: const Uuid().v4(),
-                          name: data['name']!,
-                          description: data['description']!,
-                          providerId: provider.id,
-                          modelName: provider.modelName,
-                          systemPrompt: data['systemPrompt']!,
-                          icon: Icons.group_work,
-                          color: Colors.blueAccent,
-                          skillIds: selectedSkillIds,
-                        ));
+                      if (agentsData != null && agentsData.isNotEmpty) {
+                        for (var data in agentsData) {
+                          _agents.add(AgentModel(
+                            id: const Uuid().v4(),
+                            name: data['name']!,
+                            description: data['description']!,
+                            providerId: provider.id,
+                            modelName: provider.modelName,
+                            systemPrompt: data['systemPrompt']!,
+                            icon: Icons.group_work,
+                            color: Colors.blueAccent,
+                            skillIds: selectedSkillIds,
+                          ));
+                        }
+                        await AgentManager.saveAgents(_agents);
+                        _loadAgents();
+                        if (mounted) {
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text("تم توليد فريق من ${agentsData.length} وكلاء!"), backgroundColor: AppColors.success),
+                          );
+                        }
+                      } else {
+                        setStateDialog(() => isGenerating = false);
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text("فشل التوليد: الموديل لم يُرجع بيانات صالحة. جرب موديلاً آخر مثل GPT-4o."), backgroundColor: AppColors.danger, duration: Duration(seconds: 5)),
+                          );
+                        }
                       }
-                      await AgentManager.saveAgents(_agents);
-                      _loadAgents();
+                    } catch (e) {
+                      setStateDialog(() => isGenerating = false);
                       if (mounted) {
-                        Navigator.pop(context);
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text("تم توليد فريق من ${agentsData.length} وكلاء!"), backgroundColor: AppColors.success),
+                          SnackBar(content: Text("حدث خطأ: $e"), backgroundColor: AppColors.danger, duration: const Duration(seconds: 5)),
                         );
                       }
-                    } else {
-                      setStateDialog(() => isGenerating = false);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text("فشل التوليد. تأكد من الموديل."), backgroundColor: AppColors.danger),
-                      );
                     }
                   },
                   style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
@@ -308,7 +318,7 @@ class _AgentsScreenState extends State<AgentsScreen> {
                   Row(
                     children: [
                       IconButton(
-                        icon: const Icon(Icons.auto_awesome, color: Colors.amber, size: 28), // تم التعديل هنا
+                        icon: const Icon(Icons.auto_awesome, color: Colors.amber, size: 28), 
                         onPressed: _showAutoGenerateDialog,
                         tooltip: "توليد فريق وكلاء",
                       ),
