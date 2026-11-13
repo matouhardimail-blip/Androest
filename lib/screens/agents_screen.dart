@@ -35,6 +35,7 @@ class _AgentsScreenState extends State<AgentsScreen> {
     setState(() => _isLoading = false);
   }
 
+  // نافذة الإضافة والتعديل (تمت إضافة المهارات هنا)
   Future<void> _showAgentDialog({AgentModel? agentToEdit}) async {
     List<CloudProviderConfig> providers = await CloudConfigManager.loadProviders();
 
@@ -48,6 +49,9 @@ class _AgentsScreenState extends State<AgentsScreen> {
     String desc = agentToEdit?.description ?? "";
     String sysPrompt = agentToEdit?.systemPrompt ?? "أنت مساعد ذكي.";
     String selectedProviderId = agentToEdit?.providerId ?? providers.first.id;
+
+    // قائمة المهارات المختارة للوكيل الحالي
+    List<String> currentSkillIds = List.from(agentToEdit?.skillIds ?? []);
 
     if (agentToEdit != null && !providers.any((p) => p.id == agentToEdit.providerId)) {
       selectedProviderId = providers.first.id; 
@@ -95,6 +99,34 @@ class _AgentsScreenState extends State<AgentsScreen> {
                       decoration: const InputDecoration(labelText: "شخصية الوكيل", labelStyle: TextStyle(color: AppColors.textSecondary), enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24))),
                       onChanged: (v) => sysPrompt = v,
                     ),
+                    
+                    // قسم اختيار المهارات
+                    if (_availableSkills.isNotEmpty) ...[
+                      const SizedBox(height: 20),
+                      const Align(alignment: Alignment.centerRight, child: Text("المهارات المخصصة (Skills):", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        alignment: WrapAlignment.end,
+                        children: _availableSkills.map((skill) {
+                          bool isSelected = currentSkillIds.contains(skill.id);
+                          return FilterChip(
+                            label: Text(skill.name, style: TextStyle(color: isSelected ? Colors.white : Colors.grey, fontSize: 12)),
+                            selected: isSelected,
+                            selectedColor: AppColors.primary,
+                            backgroundColor: AppColors.background,
+                            checkmarkColor: Colors.white,
+                            onSelected: (selected) {
+                              setStateDialog(() {
+                                if (selected) currentSkillIds.add(skill.id);
+                                else currentSkillIds.remove(skill.id);
+                              });
+                            },
+                          );
+                        }).toList(),
+                      ),
+                    ]
                   ],
                 ),
               ),
@@ -107,13 +139,30 @@ class _AgentsScreenState extends State<AgentsScreen> {
                       
                       if (agentToEdit == null) {
                         _agents.add(AgentModel(
-                          id: const Uuid().v4(), name: name, description: desc, providerId: selectedProviderId, modelName: selectedProvider.modelName, systemPrompt: sysPrompt, icon: Icons.smart_toy, color: AppColors.primary,
+                          id: const Uuid().v4(), 
+                          name: name, 
+                          description: desc, 
+                          providerId: selectedProviderId, 
+                          modelName: selectedProvider.modelName, 
+                          systemPrompt: sysPrompt, 
+                          icon: Icons.smart_toy, 
+                          color: AppColors.primary,
+                          skillIds: currentSkillIds, // حفظ المهارات
                         ));
                       } else {
                         int index = _agents.indexWhere((a) => a.id == agentToEdit.id);
                         if (index != -1) {
                           _agents[index] = AgentModel(
-                            id: agentToEdit.id, name: name, description: desc, providerId: selectedProviderId, modelName: selectedProvider.modelName, systemPrompt: sysPrompt, icon: agentToEdit.icon, color: agentToEdit.color, isConnected: agentToEdit.isConnected, skillIds: agentToEdit.skillIds,
+                            id: agentToEdit.id, 
+                            name: name, 
+                            description: desc, 
+                            providerId: selectedProviderId, 
+                            modelName: selectedProvider.modelName, 
+                            systemPrompt: sysPrompt, 
+                            icon: agentToEdit.icon, 
+                            color: agentToEdit.color, 
+                            isConnected: agentToEdit.isConnected, 
+                            skillIds: currentSkillIds, // تحديث المهارات
                           );
                         }
                       }
@@ -133,6 +182,7 @@ class _AgentsScreenState extends State<AgentsScreen> {
     );
   }
 
+  // نافذة التوليد التلقائي (تمت إزالة المهارات منها لتكون أسرع)
   void _showAutoGenerateDialog() {
     if (_providers.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("أضف مزود خدمة أولاً.")));
@@ -141,7 +191,6 @@ class _AgentsScreenState extends State<AgentsScreen> {
 
     String prompt = "";
     int agentCount = 3;
-    List<String> selectedSkillIds = [];
     bool isGenerating = false;
 
     showDialog(
@@ -154,7 +203,7 @@ class _AgentsScreenState extends State<AgentsScreen> {
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
               title: const Row(
                 children: [
-                  Icon(Icons.auto_awesome, color: Colors.amber), // تم التعديل هنا
+                  Icon(Icons.auto_awesome, color: Colors.amber),
                   SizedBox(width: 10),
                   Text("توليد فريق وكلاء", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
                 ],
@@ -164,7 +213,7 @@ class _AgentsScreenState extends State<AgentsScreen> {
                 child: ListView(
                   shrinkWrap: true,
                   children: [
-                    const Text("صف الفريق الذي تريده، وحدد عدد الوكلاء والمهارات المشتركة.", style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+                    const Text("صف الفريق الذي تريده، وسيقوم الذكاء الاصطناعي بإنشاء الوكلاء وتوزيع المهام.", style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
                     const SizedBox(height: 15),
                     TextField(
                       style: const TextStyle(color: Colors.white),
@@ -195,36 +244,11 @@ class _AgentsScreenState extends State<AgentsScreen> {
                       ],
                     ),
 
-                    if (_availableSkills.isNotEmpty) ...[
-                      const SizedBox(height: 10),
-                      const Text("المهارات المشتركة (اختياري):", style: TextStyle(color: Colors.white, fontSize: 14)),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8,
-                        children: _availableSkills.map((skill) {
-                          bool isSelected = selectedSkillIds.contains(skill.id);
-                          return FilterChip(
-                            label: Text(skill.name, style: TextStyle(color: isSelected ? Colors.white : Colors.grey, fontSize: 12)),
-                            selected: isSelected,
-                            selectedColor: AppColors.primary,
-                            backgroundColor: AppColors.background,
-                            checkmarkColor: Colors.white,
-                            onSelected: (selected) {
-                              setStateDialog(() {
-                                if (selected) selectedSkillIds.add(skill.id);
-                                else selectedSkillIds.remove(skill.id);
-                              });
-                            },
-                          );
-                        }).toList(),
-                      ),
-                    ],
-
                     if (isGenerating) ...[
                       const SizedBox(height: 20),
                       const Center(child: CircularProgressIndicator(color: AppColors.primary)),
                       const SizedBox(height: 10),
-                      const Center(child: Text("جاري بناء الفريق... قد يستغرق هذا 30 ثانية", style: TextStyle(color: AppColors.primary, fontSize: 12))),
+                      const Center(child: Text("جاري بناء الفريق...", style: TextStyle(color: AppColors.primary, fontSize: 12))),
                     ]
                   ],
                 ),
@@ -258,7 +282,7 @@ class _AgentsScreenState extends State<AgentsScreen> {
                             systemPrompt: data['systemPrompt']!,
                             icon: Icons.group_work,
                             color: Colors.blueAccent,
-                            skillIds: selectedSkillIds,
+                            skillIds: [], // يبدأ بدون مهارات، ويمكنك إضافتها لاحقاً عبر التعديل
                           ));
                         }
                         await AgentManager.saveAgents(_agents);
@@ -266,14 +290,14 @@ class _AgentsScreenState extends State<AgentsScreen> {
                         if (mounted) {
                           Navigator.pop(context);
                           ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text("تم توليد فريق من ${agentsData.length} وكلاء!"), backgroundColor: AppColors.success),
+                            SnackBar(content: Text("تم توليد فريق من ${agentsData.length} وكلاء! يمكنك تعديل مهاراتهم الآن."), backgroundColor: AppColors.success),
                           );
                         }
                       } else {
                         setStateDialog(() => isGenerating = false);
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text("فشل التوليد: الموديل لم يُرجع بيانات صالحة. جرب موديلاً آخر مثل GPT-4o."), backgroundColor: AppColors.danger, duration: Duration(seconds: 5)),
+                            const SnackBar(content: Text("فشل التوليد. جرب موديلاً آخر."), backgroundColor: AppColors.danger),
                           );
                         }
                       }
@@ -281,7 +305,7 @@ class _AgentsScreenState extends State<AgentsScreen> {
                       setStateDialog(() => isGenerating = false);
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text("حدث خطأ: $e"), backgroundColor: AppColors.danger, duration: const Duration(seconds: 5)),
+                          SnackBar(content: Text("حدث خطأ: $e"), backgroundColor: AppColors.danger),
                         );
                       }
                     }
@@ -376,8 +400,18 @@ class _AgentsScreenState extends State<AgentsScreen> {
                                       const SizedBox(height: 4),
                                       Text(agent.modelName, style: const TextStyle(color: AppColors.accentBlue, fontSize: 12)),
                                       if (agent.skillIds.isNotEmpty) ...[
-                                         const SizedBox(height: 4),
-                                         Text("مهارات: ${agent.skillIds.length}", style: const TextStyle(color: Colors.amber, fontSize: 11)),
+                                         const SizedBox(height: 6),
+                                         Wrap(
+                                           spacing: 4,
+                                           children: agent.skillIds.map((id) {
+                                             var skill = _availableSkills.firstWhere((s) => s.id == id, orElse: () => Skill(id: '', name: 'Unknown', systemPrompt: '', description: ''));
+                                             return Container(
+                                               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                               decoration: BoxDecoration(color: Colors.amber.withOpacity(0.2), borderRadius: BorderRadius.circular(6)),
+                                               child: Text(skill.name, style: const TextStyle(color: Colors.amber, fontSize: 10)),
+                                             );
+                                           }).toList(),
+                                         )
                                       ]
                                     ],
                                   ),
