@@ -20,7 +20,6 @@ class OnlineApiService {
     bool useTools = false,
     String? imageBase64, 
   }) async* {
-    // ... (نفس الكود السابق بدون تغيير)
     try {
       final List<Map<String, dynamic>> tools = [
         {
@@ -30,9 +29,7 @@ class OnlineApiService {
             "description": "ابحث في الإنترنت عن معلومات حديثة أو أخبار.",
             "parameters": {
               "type": "object",
-              "properties": {
-                "query": {"type": "string", "description": "كلمة البحث"}
-              },
+              "properties": {"query": {"type": "string"}},
               "required": ["query"]
             }
           }
@@ -45,24 +42,10 @@ class OnlineApiService {
             "parameters": {
               "type": "object",
               "properties": {
-                "file_path": {"type": "string", "description": "مسار الملف"},
-                "content": {"type": "string", "description": "الكود أو النص الكامل"}
+                "file_path": {"type": "string"},
+                "content": {"type": "string"}
               },
               "required": ["file_path", "content"]
-            }
-          }
-        },
-        {
-          "type": "function",
-          "function": {
-            "name": "generate_image",
-            "description": "ارسم أو أنشئ صورة بناءً على وصف.",
-            "parameters": {
-              "type": "object",
-              "properties": {
-                "prompt": {"type": "string", "description": "وصف الصورة بالإنجليزية"}
-              },
-              "required": ["prompt"]
             }
           }
         }
@@ -72,7 +55,7 @@ class OnlineApiService {
 
       String finalSystemPrompt = systemPrompt;
       if (useTools) {
-        finalSystemPrompt += "\n\n[تعليمات هامة جداً]:\nالتاريخ اليوم هو: $currentDate.\nأنت وكيل ذكي ولديك أدوات (بحث، كتابة ملفات، توليد صور).";
+        finalSystemPrompt += "\n\n[تعليمات هامة جداً]:\nالتاريخ اليوم هو: $currentDate.\nأنت وكيل ذكي ولديك أدوات (بحث، كتابة ملفات).";
       }
 
       List<Map<String, dynamic>> messages = [
@@ -94,10 +77,7 @@ class OnlineApiService {
           'role': 'user',
           'content': [
             {'type': 'text', 'text': userPrompt.isEmpty ? "قم بوصف هذه الصورة" : userPrompt},
-            {
-              'type': 'image_url',
-              'image_url': {'url': 'data:image/jpeg;base64,$imageBase64'}
-            }
+            {'type': 'image_url', 'image_url': {'url': 'data:image/jpeg;base64,$imageBase64'}}
           ]
         });
       } else {
@@ -168,7 +148,7 @@ class OnlineApiService {
           toolCallCount++;
           
           String toolResult = "";
-          yield "\n\n> ⚙️ *جاري تنفيذ الأداة: $toolCallName...*\n\n";
+          yield "\n\n> ⚙️ *جاري تنفيذ: $toolCallName...*\n\n";
           
           await Future.delayed(const Duration(milliseconds: 500));
 
@@ -177,7 +157,7 @@ class OnlineApiService {
             
             if (toolCallName == "web_search") {
               String query = args['query'] ?? "";
-              yield "\n\n> 🔍 *جاري البحث في الإنترنت عن: $query...*\n\n";
+              yield "\n\n> 🔍 *جاري البحث عن: $query...*\n\n";
               toolResult = await _webSearch.search(query);
             } 
             else if (toolCallName == "write_file") {
@@ -185,13 +165,6 @@ class OnlineApiService {
               String content = args['content'] ?? "";
               yield "\n\n> 💾 *جاري حفظ الملف: $path...*\n\n";
               toolResult = await McpTools.writeFile(path, content);
-            }
-            else if (toolCallName == "generate_image") {
-              String prompt = args['prompt'] ?? "";
-              yield "\n\n> 🎨 *جاري رسم الصورة: $prompt...*\n\n";
-              String encodedPrompt = Uri.encodeComponent(prompt);
-              String imageUrl = 'https://image.pollinations.ai/prompt/$encodedPrompt?width=1024&height=1024&nologo=true';
-              toolResult = "تم توليد الصورة بنجاح. رابط الصورة هو: $imageUrl\n\nاعرض الصورة للمستخدم باستخدام صيغة Markdown: ![صورة]($imageUrl)";
             }
           } catch (e) {
             toolResult = "خطأ في تنفيذ الأداة: $e";
@@ -216,187 +189,70 @@ class OnlineApiService {
             'content': toolResult,
           });
 
-          messages.add({
-            'role': 'system',
-            'content': "تم تنفيذ الأداة بنجاح. أكمل الإجابة."
-          });
+          messages.add({'role': 'system', 'content': "تم تنفيذ الأداة. أكمل الإجابة."});
         }
       }
     } on DioException catch (e) {
       if (e.response?.statusCode == 429) {
-        yield "\n\n⚠️ **الرجاء الانتظار بضع ثوانٍ (تجاوزت الحد الأقصى للطلبات).**";
+        yield "\n\n⚠️ **الرجاء الانتظار (تجاوزت الحد).**";
       } else {
-        String serverMessage = "خطأ غير معروف";
-        if (e.response != null && e.response!.data != null) {
-          try {
-            if (e.response!.data is Map) {
-              serverMessage = e.response!.data['error']?['message'] ?? e.response!.data.toString();
-            } else if (e.response!.data is String) {
-              serverMessage = e.response!.data;
-            } else {
-              serverMessage = e.response!.data.toString();
-            }
-          } catch (_) {}
-        }
-        yield "\n\n❌ خطأ من الخادم (${e.response?.statusCode}):\n$serverMessage";
+        yield "\n\n❌ خطأ: ${e.response?.statusCode}\n${e.response?.data}";
       }
     } catch (e) {
-      yield "\n\n❌ خطأ غير متوقع: $e";
+      yield "\n\n❌ خطأ: $e";
     }
   }
 
-  Future<String> summarizeChat({
+  Future<List<String>?> autoSelectAgents({
     required String provider,
     required String apiKey,
     required String baseUrl,
     required String modelName,
-    required List<Map<String, String>> chatHistory,
+    required String userTask,
+    required List<Map<String, String>> availableAgents,
   }) async {
-    // ... (نفس الكود السابق بدون تغيير)
     try {
-      String historyText = chatHistory.map((m) => "${m['role'] == 'user' ? 'المستخدم' : 'المساعد'}: ${m['text']}").join('\n');
-      
-      final response = await _dio.post(
-        '$baseUrl/chat/completions',
-        options: Options(
-          headers: {
-            'Authorization': 'Bearer $apiKey',
-            'Content-Type': 'application/json',
-          },
-        ),
-        data: jsonEncode({
-          'model': modelName,
-          'messages': [
-            {'role': 'system', 'content': 'أنت خبير في تلخيص المحادثات. لخص المحادثة التالية في نقاط مختصرة جداً.'},
-            {'role': 'user', 'content': historyText},
-          ],
-        }),
-      );
-      return response.data['choices'][0]['message']['content'];
-    } catch (e) {
-      return "فشل التلخيص: $e";
-    }
-  }
+      String prompt = """
+المستخدم يريد: "$userTask"
+الوكلاء المتاحون:
+${availableAgents.map((a) => "- ${a['id']} : ${a['name']} (${a['description']})").join('\n')}
 
-  Future<String?> testConnection({
-    required String provider,
-    required String apiKey,
-    required String baseUrl,
-    required String modelName,
-  }) async {
-    // ... (نفس الكود السابق بدون تغيير)
-    try {
-      if (provider.toLowerCase() == "anthropic") {
-        final response = await _dio.post(
-          '$baseUrl/v1/messages',
-          options: Options(
-            headers: {
-              'x-api-key': apiKey,
-              'anthropic-version': '2023-06-01',
-              'content-type': 'application/json',
-            },
-          ),
-          data: jsonEncode({
-            'model': modelName,
-            'max_tokens': 5,
-            'messages': [{'role': 'user', 'content': 'Hi'}],
-          }),
-        );
-        if (response.statusCode == 200) return null;
-      } else {
-        final response = await _dio.post(
-          '$baseUrl/chat/completions',
-          options: Options(
-            headers: {
-              'Authorization': 'Bearer $apiKey',
-              'Content-Type': 'application/json',
-            },
-          ),
-          data: jsonEncode({
-            'model': modelName,
-            'messages': [{'role': 'user', 'content': 'Hi'}],
-            'max_tokens': 5,
-          }),
-        );
-        if (response.statusCode == 200) return null;
-      }
-    } on DioException catch (e) {
-      String msg = "خطأ غير معروف";
-      if (e.response != null && e.response!.data != null) {
-         if (e.response!.data is Map) {
-            msg = e.response!.data['error']?['message'] ?? e.response!.data['message'] ?? e.response!.data.toString();
-         } else {
-            msg = e.response!.data.toString();
-         }
-      } else {
-         msg = e.message ?? e.toString();
-      }
-      return "(${e.response?.statusCode ?? 'Err'}) $msg";
-    } catch (e) {
-      return e.toString();
-    }
-    return "فشل الاتصال غير متوقع";
-  }
-
-  // الدالة الجديدة: توليد بيانات وكيل تلقائياً
-  Future<Map<String, String>?> generateAgentData({
-    required String provider,
-    required String apiKey,
-    required String baseUrl,
-    required String modelName,
-    required String userPrompt,
-  }) async {
-    try {
-      String metaPrompt = """
-أنت خبير في تصميم وكلاء الذكاء الاصطناعي. المستخدم يطلب وكيلاً متخصصاً في: "$userPrompt".
-قم بإنشاء بيانات هذا الوكيل وأخرجها بصيغة JSON فقط (بدون أي كلام آخر، وبدون علامات Markdown).
-استخدم هذا الهيكل بالضبط:
-{
-  "name": "اسم قصير ومميز للوكيل",
-  "description": "وصف قصير جداً للوكيل",
-  "systemPrompt": "التعليمات التفصيلية للوكيل (شخصيته، كيف يجيب، ما هي مهاراته، يجب أن يكون باللغة العربية)"
-}
+اختر أفضل 2 أو 3 وكلاء ورتبهم. أخرج مصفوفة JSON للمعرفات فقط: ["id1", "id2"]
 """;
 
       final response = await _dio.post(
         '$baseUrl/chat/completions',
-        options: Options(
-          headers: {
-            'Authorization': 'Bearer $apiKey',
-            'Content-Type': 'application/json',
-          },
-        ),
-        data: jsonEncode({
-          'model': modelName,
-          'messages': [
-            {'role': 'system', 'content': 'أنت مصمم وكلاء محترف. تخرج JSON فقط.'},
-            {'role': 'user', 'content': metaPrompt},
-          ],
-          'temperature': 0.2,
-        }),
+        options: Options(headers: {'Authorization': 'Bearer $apiKey', 'Content-Type': 'application/json'}),
+        data: jsonEncode({'model': modelName, 'messages': [{'role': 'user', 'content': prompt}], 'temperature': 0.1}),
       );
 
-      String content = response.data['choices'][0]['message']['content'];
-      
-      // تنظيف النص من أي علامات Markdown قد يضيفها الموديل
-      content = content.replaceAll('```json', '').replaceAll('```', '').trim();
-      
-      // البحث عن أول قوس { وآخر قوس }
-      int start = content.indexOf('{');
-      int end = content.lastIndexOf('}');
+      String content = response.data['choices'][0]['message']['content'].trim();
+      int start = content.indexOf('[');
+      int end = content.lastIndexOf(']');
       if (start != -1 && end != -1) {
-        content = content.substring(start, end + 1);
+        List<dynamic> ids = jsonDecode(content.substring(start, end + 1));
+        return ids.map((e) => e.toString()).toList();
       }
-
-      final data = jsonDecode(content);
-      return {
-        'name': data['name']?.toString() ?? 'وكيل جديد',
-        'description': data['description']?.toString() ?? 'وكيل تم إنشاؤه تلقائياً',
-        'systemPrompt': data['systemPrompt']?.toString() ?? 'أنت مساعد ذكي.',
-      };
-    } catch (e) {
-      print("Error generating agent: $e");
       return null;
-    }
+    } catch (e) { return null; }
+  }
+
+  // دالة التلخيص والاختبار
+  Future<String> summarizeChat({required String provider, required String apiKey, required String baseUrl, required String modelName, required List<Map<String, String>> chatHistory}) async {
+    try {
+      String historyText = chatHistory.map((m) => "${m['role'] == 'user' ? 'المستخدم' : 'المساعد'}: ${m['text']}").join('\n');
+      final response = await _dio.post('$baseUrl/chat/completions', options: Options(headers: {'Authorization': 'Bearer $apiKey', 'Content-Type': 'application/json'}), data: jsonEncode({'model': modelName, 'messages': [{'role': 'system', 'content': 'لخص المحادثة.'}, {'role': 'user', 'content': historyText}]}));
+      return response.data['choices'][0]['message']['content'];
+    } catch (e) { return "فشل التلخيص: $e"; }
+  }
+
+  Future<String?> testConnection({required String provider, required String apiKey, required String baseUrl, required String modelName}) async {
+    try {
+      final response = await _dio.post('$baseUrl/chat/completions', options: Options(headers: {'Authorization': 'Bearer $apiKey', 'Content-Type': 'application/json'}), data: jsonEncode({'model': modelName, 'messages': [{'role': 'user', 'content': 'Hi'}], 'max_tokens': 5}));
+      if (response.statusCode == 200) return null;
+    } on DioException catch (e) {
+      return "(${e.response?.statusCode}) ${e.response?.data}";
+    } catch (e) { return e.toString(); }
+    return "فشل";
   }
 }
