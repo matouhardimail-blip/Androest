@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // <--- تم إضافة هذا الاستيراد لحل SystemNavigator
 import 'dart:io';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../theme.dart';
 import 'provider_manager_screen.dart';
 import 'skills_screen.dart';
 import '../update_service.dart';
 import '../notification_service.dart';
 import '../model_manager.dart';
-import '../settings_manager.dart';
+import '../settings_manager.dart'; // <--- يحتوي الآن على themeNotifier
 import '../cloud_provider.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -26,7 +26,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   double _modelProgress = 0.0;
   bool _isModelReady = false;
 
-  // إعدادات التطبيق
   String _userName = "";
   bool _isDarkMode = true;
   String? _defaultProviderId;
@@ -39,10 +38,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _loadData() async {
-    // جلب حالة الموديل
     File? file = await _modelManager.getModelFile();
-    
-    // جلب الإعدادات
     String name = await SettingsManager.getUserName();
     bool isDark = await SettingsManager.isDarkMode();
     String? providerId = await SettingsManager.getDefaultProviderId();
@@ -150,8 +146,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               await SettingsManager.factoryReset();
               if (mounted) {
                 Navigator.pop(context);
-                // إعادة تشغيل التطبيق (الخروج منه)
-                SystemNavigator.pop();
+                SystemNavigator.pop(); // <--- الآن سيعمل بنجاح
               }
             },
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger),
@@ -170,7 +165,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
           padding: const EdgeInsets.all(16),
           child: Column(
             children: [
-              // بطاقة المستخدم (قابلة للتعديل)
               GestureDetector(
                 onTap: _editNameDialog,
                 child: Container(
@@ -209,7 +203,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               const SizedBox(height: 25),
 
-              // إعدادات التطبيق
               Container(
                 margin: const EdgeInsets.only(bottom: 12),
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -220,7 +213,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 child: Column(
                   children: [
-                    // المزود الافتراضي
                     if (_providers.isNotEmpty)
                       DropdownButtonFormField<String>(
                         value: _defaultProviderId ?? _providers.first.id,
@@ -241,7 +233,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                       ),
                     
-                    // الوضع الفاتح/الداكن
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       title: const Text("الوضع الداكن (Dark Mode)", style: TextStyle(color: Colors.white, fontSize: 15)),
@@ -250,16 +241,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       onChanged: (val) async {
                         await SettingsManager.setThemeMode(val);
                         setState(() => _isDarkMode = val);
-                        // تحديث الثيم فوراً (باستدعاء ValueNotifier من main.dart)
-                        // ملاحظة: في التطبيق الحقيقي نستخدم Provider، هنا سنستخدم حدث مؤقت
-                        themeNotifier.value = val ? ThemeMode.dark : ThemeMode.light;
+                        themeNotifier.value = val ? ThemeMode.dark : ThemeMode.light; // <--- الآن سيعمل بنجاح
                       },
                     ),
                   ],
                 ),
               ),
 
-              // قسم الموديل المحلي
               Container(
                 margin: const EdgeInsets.only(bottom: 12),
                 padding: const EdgeInsets.all(20),
@@ -306,14 +294,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ),
 
-              // التحديث والمهارات والمزودين
               _buildSettingItem(context, Icons.update, "تحديث التطبيق", onTap: _isUpdating ? null : _handleUpdate),
               _buildSettingItem(context, Icons.extension, "إدارة المهارات (Skills)", onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const SkillsScreen()))),
               _buildSettingItem(context, Icons.key, "API Keys & Connections", onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const ProviderManagerScreen()))),
 
               const SizedBox(height: 30),
               
-              // زر مسح البيانات
               TextButton.icon(
                 onPressed: _factoryResetDialog,
                 icon: const Icon(Icons.delete_forever, color: AppColors.danger),
