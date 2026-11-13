@@ -1,10 +1,14 @@
+import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
+
+// المتحكم في الثيم (متاح لجميع الشاشات)
+final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.dark);
 
 class SettingsManager {
   static const String _keyUserName = 'user_name';
   static const String _keyDefaultProvider = 'default_provider_id';
-  static const String _keyThemeMode = 'theme_mode'; // 'dark' or 'light'
+  static const String _keyThemeMode = 'theme_mode'; 
 
   static Future<String> getUserName() async {
     final prefs = await SharedPreferences.getInstance();
@@ -37,12 +41,10 @@ class SettingsManager {
     await prefs.setString(_keyThemeMode, isDark ? 'dark' : 'light');
   }
 
-  // دالة مسح جميع البيانات (Factory Reset)
   static Future<void> factoryReset() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.clear(); // مسح كل الإعدادات والمحادثات والوكلاء
+    await prefs.clear(); 
 
-    // مسح مجلد مساحة العمل (المشاريع)
     try {
       Directory workspaceDir = Directory('/storage/emulated/0/Download/AgentPhoneProjects');
       if (await workspaceDir.exists()) {
