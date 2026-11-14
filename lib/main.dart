@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_background_service/flutter_background_service.dart';
+import 'package:flutter_background_service_android/flutter_background_service_android.dart';
 import 'theme.dart';
 import 'notification_service.dart';
 import 'settings_manager.dart'; 
@@ -9,9 +11,59 @@ import 'screens/create_screen.dart';
 import 'screens/workflows_screen.dart';
 import 'screens/profile_screen.dart';
 
+// نقطة الدخول لخدمة الخلفية
+@pragma('vm:entry-point')
+void onStart(ServiceInstance service) async {
+  if (service is AndroidServiceInstance) {
+    service.on('setAsForeground').listen((event) {
+      service.setAsForegroundService();
+    });
+    service.on('setAsBackground').listen((event) {
+      service.setAsBackgroundService();
+    });
+  }
+
+  service.on('stopService').listen((event) {
+    service.stopSelf();
+  });
+
+  // إبقاء الخدمة حية
+  Timer.periodic(const Duration(seconds: 10), (timer) async {
+    if (service is AndroidServiceInstance) {
+      if (await service.isForegroundService()) {
+        service.setForegroundNotificationInfo(
+          title: "AI HUB يعمل",
+          content: "الوكلاء يقومون بمهامهم في الخلفية...",
+        );
+      }
+    }
+  });
+}
+
+Future<void> initializeService() async {
+  final service = FlutterBackgroundService();
+  await service.configure(
+    androidConfiguration: AndroidConfiguration(
+      onStart: onStart,
+      autoStart: false, // لا تبدأ تلقائياً، بل عند الحاجة
+      isForegroundMode: true,
+      notificationChannelId: 'ai_hub_bg',
+      initialNotificationTitle: 'AI HUB',
+      initialNotificationContent: 'جاري تهيئة الخلفية...',
+      foregroundServiceNotificationId: 888,
+    ),
+    iosConfiguration: IosConfiguration(
+      autoStart: false,
+      onForeground: onStart,
+      onBackground: (service) => true,
+    ),
+  );
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await NotificationService.init();
+  await initializeService();
   
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
@@ -58,9 +110,9 @@ class _MyAppState extends State<MyApp> {
   }
 }
 
+// ... (باقي كود SplashScreen و MainNavigation كما هو)
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
-
   @override
   State<SplashScreen> createState() => _SplashScreenState();
 }
@@ -126,7 +178,6 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
 class MainNavigation extends StatefulWidget {
   const MainNavigation({super.key});
-
   @override
   State<MainNavigation> createState() => _MainNavigationState();
 }
