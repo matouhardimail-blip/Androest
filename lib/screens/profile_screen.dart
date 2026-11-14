@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // <--- تم إضافة هذا الاستيراد لحل SystemNavigator
+import 'package:flutter/services.dart'; 
 import 'dart:io';
 import '../theme.dart';
 import 'provider_manager_screen.dart';
@@ -7,7 +7,7 @@ import 'skills_screen.dart';
 import '../update_service.dart';
 import '../notification_service.dart';
 import '../model_manager.dart';
-import '../settings_manager.dart'; // <--- يحتوي الآن على themeNotifier
+import '../settings_manager.dart'; 
 import '../cloud_provider.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -67,11 +67,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (mounted) {
       setState(() => _isUpdating = false);
       if (status == "no_update") {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("أنت تستخدم أحدث نسخة."), backgroundColor: AppColors.success));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("أنت تستخدم أحدث نسخة من التطبيق."), backgroundColor: AppColors.success));
       } else if (status == "error") {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("فشل التحديث."), backgroundColor: AppColors.danger));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("فشل التحديث. تأكد من الإنترنت أو من وجود إصدار جديد."), backgroundColor: AppColors.danger));
       } else if (status == "success") {
-         NotificationService.showNotification("تحديث AI HUB", "جاري التثبيت...");
+         NotificationService.showNotification("تحديث AI HUB", "تم تحميل النسخة الجديدة بنجاح، جاري التثبيت...");
       }
     }
   }
@@ -146,7 +146,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               await SettingsManager.factoryReset();
               if (mounted) {
                 Navigator.pop(context);
-                SystemNavigator.pop(); // <--- الآن سيعمل بنجاح
+                SystemNavigator.pop(); 
               }
             },
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger),
@@ -241,7 +241,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       onChanged: (val) async {
                         await SettingsManager.setThemeMode(val);
                         setState(() => _isDarkMode = val);
-                        themeNotifier.value = val ? ThemeMode.dark : ThemeMode.light; // <--- الآن سيعمل بنجاح
+                        themeNotifier.value = val ? ThemeMode.dark : ThemeMode.light; 
                       },
                     ),
                   ],
