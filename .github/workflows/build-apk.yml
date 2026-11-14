@@ -47,7 +47,6 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
-      # هذه الخطوة الجديدة لتوليد الأيقونة وشاشة البداية
       - name: Generate App Icons and Splash
         run: |
           dart run flutter_launcher_icons
@@ -67,5 +66,7 @@ jobs:
           tag_name: build-${{ github.run_number }}
           name: Latest APK
           files: build/app/outputs/flutter-apk/app-release.apk
+          draft: false
+          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
