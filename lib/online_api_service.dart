@@ -9,7 +9,6 @@ class OnlineApiService {
   final Dio _dio = Dio();
   final WebSearch _webSearch = WebSearch();
 
-  // ... (باقي الدوال كما هي، سأضعها كاملة لضمان عدم وجود أخطاء)
   Stream<String> generateStream({
     required String provider,
     required String apiKey,
@@ -135,9 +134,36 @@ class OnlineApiService {
         }
       }
     } on DioException catch (e) {
-      if (e.response?.statusCode == 429) yield "\n\n⚠️ **تجاوزت الحد.**";
-      else yield "\n\n❌ خطأ: ${e.response?.statusCode}\n${e.response?.data}";
-    } catch (e) { yield "\n\n❌ خطأ: $e"; }
+      if (e.response?.statusCode == 429) {
+        yield "\n\n⚠️ **تجاوزت الحد المسموح به.**";
+      } else {
+        // هنا الحل: استخراج النص الحقيقي من ResponseBody
+        String errorMessage = "خطأ غير معروف";
+        if (e.response?.data is ResponseBody) {
+          try {
+            final responseBody = e.response!.data as ResponseBody;
+            final bytes = await responseBody.stream.fold<List<int>>(<int>[], (previous, element) => previous..addAll(element));
+            final rawError = utf8.decode(bytes);
+            
+            // محاولة استخراج رسالة الخطأ إذا كانت بصيغة JSON
+            try {
+              final parsed = jsonDecode(rawError);
+              errorMessage = parsed['error']?['message'] ?? rawError;
+            } catch (_) {
+              errorMessage = rawError;
+            }
+          } catch (_) {
+            errorMessage = "فشل قراءة تفاصيل الخطأ من الخادم.";
+          }
+        } else if (e.response?.data != null) {
+          errorMessage = e.response!.data.toString();
+        }
+        
+        yield "\n\n❌ خطأ من الخادم (${e.response?.statusCode}):\n$errorMessage";
+      }
+    } catch (e) {
+      yield "\n\n❌ خطأ غير متوقع: $e";
+    }
   }
 
   Future<List<String>?> autoSelectAgents({
@@ -162,7 +188,6 @@ ${availableAgents.map((a) => "- ${a['id']} : ${a['name']} (${a['description']})"
     } catch (e) { return null; }
   }
 
-  // دالة محسنة لتوليد الفريق
   Future<List<Map<String, String>>?> generateAgentTeam({
     required String provider, required String apiKey, required String baseUrl, required String modelName,
     required String userPrompt, required int numberOfAgents,
@@ -185,8 +210,8 @@ ${availableAgents.map((a) => "- ${a['id']} : ${a['name']} (${a['description']})"
         '$baseUrl/chat/completions', 
         options: Options(
           headers: {'Authorization': 'Bearer $apiKey', 'Content-Type': 'application/json'},
-          sendTimeout: const Duration(seconds: 30), // مهلة الإرسال
-          receiveTimeout: const Duration(seconds: 45), // مهلة الاستقبال
+          sendTimeout: const Duration(seconds: 30),
+          receiveTimeout: const Duration(seconds: 45),
         ), 
         data: jsonEncode({
           'model': modelName, 
@@ -195,29 +220,20 @@ ${availableAgents.map((a) => "- ${a['id']} : ${a['name']} (${a['description']})"
             {'role': 'user', 'content': metaPrompt}
           ], 
           'temperature': 0.2,
-          'response_format': {'type': 'json_object'} // إجبار الموديل على إخراج JSON
+          'response_format': {'type': 'json_object'}
         })
       );
       
       String content = response.data['choices'][0]['message']['content'].trim();
-      
-      // تنظيف النص
-      int start = content.indexOf('{'); 
-      int end = content.lastIndexOf('}');
+      int start = content.indexOf('{'); int end = content.lastIndexOf('}');
       
       if (start != -1 && end != -1) {
         content = content.substring(start, end + 1);
         final data = jsonDecode(content);
-        
-        List<dynamic> jsonList = data['agents']; // الوصول إلى المصفوفة داخل الكائن
+        List<dynamic> jsonList = data['agents'];
         List<Map<String, String>> agents = [];
-        
         for (var item in jsonList) {
-          agents.add({
-            'name': item['name']?.toString() ?? 'وكيل', 
-            'description': item['description']?.toString() ?? '', 
-            'systemPrompt': item['systemPrompt']?.toString() ?? ''
-          });
+          agents.add({'name': item['name']?.toString() ?? 'وكيل', 'description': item['description']?.toString() ?? '', 'systemPrompt': item['systemPrompt']?.toString() ?? ''});
         }
         return agents;
       }
